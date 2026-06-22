@@ -13,7 +13,12 @@ const CONFIG = {
   businessCooldownBaseSeconds: 60,
   businessCooldownMaxSeconds: 6 * 60 * 60,
   boostCooldownSeconds: 24 * 60 * 60,
-  maxPlayerLevel: 60
+  maxPlayerLevel: 60,
+  referralReward: 5000,
+  telegramBotUsername: "raccoontap_bot",
+  telegramAppShortName: "",
+  backendUrl: "https://nmivnzqontadqegdvhdl.supabase.co/functions/v1/register-player",
+  supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5taXZuenFvbnRhZHFlZ2R2aGRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxNTg4MzEsImV4cCI6MjA5NzczNDgzMX0.OsEXGOk0rVK0EBq1RRIH20tJgPIJWkZsDb3MqmGs9aA"
 };
 
 const categorySource = [
@@ -166,7 +171,22 @@ const defaultState = {
   businessCooldowns: {},
   boostCooldownEnds: {},
   usedBoostDates: {},
-  activeBoosts: []
+  activeBoosts: [],
+  referrals: {
+    code: "",
+    invitedBy: "",
+    acceptedAt: 0,
+    invitedFriends: 0,
+    rewardsEarned: 0,
+    acceptedRewardClaimed: false,
+    backendEnabled: false,
+    backendStatus: "local",
+    backendError: "",
+    telegramId: "",
+    serverBalance: 0,
+    serverBalanceApplied: 0,
+    lastSyncAt: 0
+  }
 };
 
 let state = loadState();
@@ -208,12 +228,25 @@ const els = {
   offlineModal: $("#offlineModal"),
   offlineText: $("#offlineText"),
   offlineClose: $("#offlineClose"),
-  boostDateValue: $("#boostDateValue")
+  boostDateValue: $("#boostDateValue"),
+  referralCodeValue: $("#referralCodeValue"),
+  referralInvitedValue: $("#referralInvitedValue"),
+  referralEarnedValue: $("#referralEarnedValue"),
+  referralLinkValue: $("#referralLinkValue"),
+  copyReferralBtn: $("#copyReferralBtn"),
+  shareReferralBtn: $("#shareReferralBtn"),
+  incomingReferralCard: $("#incomingReferralCard"),
+  incomingReferralValue: $("#incomingReferralValue"),
+  referralInfoValue: $("#referralInfoValue")
 };
 
 init();
 
 function init() {
+  initTelegramApp();
+  ensureReferralState();
+  captureIncomingReferral();
+
   els.maxEnergyValue.textContent = formatNumber(getMaxEnergy());
   els.energyCapMaxLevelValue.textContent = CONFIG.energyCapacityMaxLevel;
   els.energyRegenValue.textContent = `+${CONFIG.energyRegenPerSecond}/сек`;
@@ -224,9 +257,11 @@ function init() {
   bindTap();
   bindReset();
   bindEnergyCapacityUpgrade();
+  bindReferralActions();
   renderCategoryTabs();
   renderBoosts();
   renderAll();
+  syncTelegramPlayer();
 
   setInterval(gameLoop, 1000);
   setInterval(saveState, 5000);
@@ -251,7 +286,11 @@ function loadState() {
       businessCooldowns: parsed.businessCooldowns || {},
       boostCooldownEnds: migrateBoostCooldowns(parsed),
       usedBoostDates: parsed.usedBoostDates || {},
-      activeBoosts: parsed.activeBoosts || []
+      activeBoosts: parsed.activeBoosts || [],
+      referrals: {
+        ...structuredClone(defaultState.referrals),
+        ...(parsed.referrals || {})
+      }
     };
   } catch (error) {
     console.warn("Не удалось загрузить сохранение:", error);
@@ -356,11 +395,28 @@ function bindReset() {
   els.resetBtn.addEventListener("click", () => {
     const ok = confirm("Точно сбросить весь прогресс Raccoon Tap?");
     if (!ok) return;
+
+    const preservedReferralSync = structuredClone(state.referrals || {});
+
     localStorage.removeItem(CONFIG.saveKey);
     state = structuredClone(defaultState);
+    state.referrals = {
+      ...structuredClone(defaultState.referrals),
+      code: preservedReferralSync.code || "",
+      invitedFriends: Number(preservedReferralSync.invitedFriends || 0),
+      rewardsEarned: Number(preservedReferralSync.rewardsEarned || 0),
+      backendEnabled: Boolean(preservedReferralSync.backendEnabled),
+      backendStatus: preservedReferralSync.backendStatus || "local",
+      telegramId: preservedReferralSync.telegramId || "",
+      serverBalance: Number(preservedReferralSync.serverBalance || 0),
+      serverBalanceApplied: Number(preservedReferralSync.serverBalanceApplied || 0),
+      lastSyncAt: Number(preservedReferralSync.lastSyncAt || 0)
+    };
     activeCategoryId = "markets";
+    saveState();
     renderAll();
-    showToast("Прогресс сброшен.");
+    syncTelegramPlayer();
+    showToast("Прогресс сброшен. Уже полученные серверные реферальные бонусы не дублируются.");
   });
 }
 
@@ -434,6 +490,312 @@ function renderAll() {
   if ($("#screen-boosts").classList.contains("active")) {
     renderBoosts();
   }
+
+  if ($("#screen-referrals").classList.contains("active")) {
+    renderReferrals();
+  }
+}
+
+
+function initTelegramApp() {
+  const tg = window.Telegram?.WebApp;
+  if (!tg) return;
+
+  try {
+    tg.ready();
+    tg.expand();
+  } catch (error) {
+    console.warn("Telegram WebApp init warning:", error);
+  }
+}
+
+function ensureReferralState() {
+  state.referrals = {
+    ...structuredClone(defaultState.referrals),
+    ...(state.referrals || {})
+  };
+
+  if (!state.referrals.code) {
+    state.referrals.code = createReferralCode();
+  }
+
+  state.referrals.invitedFriends = Number(state.referrals.invitedFriends || 0);
+  state.referrals.rewardsEarned = Number(state.referrals.rewardsEarned || 0);
+  state.referrals.serverBalance = Number(state.referrals.serverBalance || 0);
+  state.referrals.serverBalanceApplied = Number(state.referrals.serverBalanceApplied || 0);
+}
+
+function createReferralCode() {
+  const telegramUser = getTelegramUser();
+  if (telegramUser?.id) return `ref_${telegramUser.id}`;
+
+  const storedCode = localStorage.getItem("raccoon_referral_code");
+  if (storedCode) return storedCode;
+
+  const randomPart = Math.random().toString(36).slice(2, 8);
+  const timePart = Date.now().toString(36).slice(-5);
+  const code = `local_${timePart}${randomPart}`;
+  localStorage.setItem("raccoon_referral_code", code);
+  return code;
+}
+
+function getTelegramUser() {
+  return window.Telegram?.WebApp?.initDataUnsafe?.user || null;
+}
+
+function getIncomingReferralParam() {
+  const tg = window.Telegram?.WebApp;
+  const urlParams = new URLSearchParams(window.location.search);
+  let rawInitStartParam = "";
+
+  try {
+    rawInitStartParam = new URLSearchParams(tg?.initData || "").get("start_param") || "";
+  } catch (error) {
+    rawInitStartParam = "";
+  }
+
+  return tg?.initDataUnsafe?.start_param
+    || rawInitStartParam
+    || urlParams.get("tgWebAppStartParam")
+    || urlParams.get("startapp")
+    || urlParams.get("ref")
+    || "";
+}
+
+function normalizeReferralCode(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^ref[_-]/i, "")
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 64);
+}
+
+function toTelegramStartParam(referralCode) {
+  const raw = String(referralCode || "").trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+  if (!raw) return "";
+  return /^ref[_-]/i.test(raw) ? raw : `ref_${raw}`;
+}
+
+function captureIncomingReferral() {
+  const incomingRaw = getIncomingReferralParam();
+  const incomingCode = normalizeReferralCode(incomingRaw);
+  if (!incomingCode) return;
+
+  const ownCode = normalizeReferralCode(state.referrals.code);
+  if (!ownCode || incomingCode === ownCode) return;
+
+  if (!state.referrals.invitedBy) {
+    state.referrals.invitedBy = incomingCode;
+    state.referrals.acceptedAt = Date.now();
+    saveState();
+  }
+}
+
+async function syncTelegramPlayer() {
+  ensureReferralState();
+
+  const backendUrl = String(CONFIG.backendUrl || "").trim();
+  if (!backendUrl) {
+    state.referrals.backendStatus = "local";
+    renderReferralsIfOpen();
+    return;
+  }
+
+  const tg = window.Telegram?.WebApp;
+  const initData = tg?.initData || "";
+
+  if (!initData) {
+    state.referrals.backendEnabled = false;
+    state.referrals.backendStatus = "not_telegram";
+    state.referrals.backendError = "";
+    renderReferralsIfOpen();
+    return;
+  }
+
+  const startParam = toTelegramStartParam(getIncomingReferralParam());
+  state.referrals.backendStatus = "syncing";
+  state.referrals.backendError = "";
+  renderReferralsIfOpen();
+
+  try {
+    const headers = {
+      "Content-Type": "application/json"
+    };
+
+    if (CONFIG.supabaseAnonKey) {
+      headers.apikey = CONFIG.supabaseAnonKey;
+      headers.Authorization = `Bearer ${CONFIG.supabaseAnonKey}`;
+    }
+
+    const response = await fetch(backendUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        initData,
+        startParam
+      })
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok || !data?.ok) {
+      throw new Error(data?.error || `Backend response ${response.status}`);
+    }
+
+    applyBackendPlayerData(data);
+  } catch (error) {
+    console.warn("Referral backend sync failed:", error);
+    state.referrals.backendEnabled = false;
+    state.referrals.backendStatus = "error";
+    state.referrals.backendError = String(error?.message || error);
+    saveState();
+    renderReferralsIfOpen();
+  }
+}
+
+function applyBackendPlayerData(data) {
+  const user = data.user || {};
+  const backendReferralCode = String(user.referral_code || "").trim();
+  const backendTelegramId = user.telegram_id ? String(user.telegram_id) : "";
+
+  state.referrals.backendEnabled = true;
+  state.referrals.backendStatus = "connected";
+  state.referrals.backendError = "";
+  state.referrals.lastSyncAt = Date.now();
+
+  if (backendTelegramId) state.referrals.telegramId = backendTelegramId;
+  if (backendReferralCode) state.referrals.code = backendReferralCode;
+
+  state.referrals.invitedFriends = Number(data.invited_count || 0);
+
+  const serverBalance = Math.max(0, Number(user.balance || 0));
+  const appliedBefore = Math.max(0, Number(state.referrals.serverBalanceApplied || 0));
+  const newReferralReward = Math.max(0, serverBalance - appliedBefore);
+
+  state.referrals.serverBalance = serverBalance;
+  state.referrals.rewardsEarned = serverBalance;
+
+  if (newReferralReward > 0) {
+    state.coins += newReferralReward;
+    state.totalEarned += newReferralReward;
+    state.referrals.serverBalanceApplied = serverBalance;
+
+    setTimeout(() => {
+      showToast(`Реферальный бонус: +${formatNumber(newReferralReward)} RCT.`);
+      spawnFloatingText(`+${formatNumber(newReferralReward)}`, window.innerWidth / 2, 160);
+    }, 300);
+  } else if (serverBalance < appliedBefore) {
+    // Если в базе вручную обнулили бонусы, не отнимаем монеты у игрока, только синхронизируем счетчик.
+    state.referrals.serverBalanceApplied = serverBalance;
+  }
+
+  if (data.referral_reward_given) {
+    setTimeout(() => {
+      showToast("Приглашение засчитано. Бонус получит пригласивший игрок.");
+    }, 450);
+  }
+
+  saveState();
+  renderAll();
+}
+
+function renderReferralsIfOpen() {
+  if ($("#screen-referrals")?.classList.contains("active")) {
+    renderReferrals();
+  }
+}
+
+function bindReferralActions() {
+  els.copyReferralBtn?.addEventListener("click", copyReferralLink);
+  els.shareReferralBtn?.addEventListener("click", shareReferralLink);
+}
+
+async function copyReferralLink() {
+  const link = buildReferralLink();
+
+  try {
+    await navigator.clipboard.writeText(link);
+    showToast("Реферальная ссылка скопирована.");
+  } catch (error) {
+    els.referralLinkValue?.select();
+    document.execCommand("copy");
+    showToast("Ссылка выделена и скопирована.");
+  }
+}
+
+function shareReferralLink() {
+  const link = buildReferralLink();
+  const text = "Залетай в Raccoon Tap. За активного приглашённого друга я получу 5 000 RCT.";
+  const telegramShareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
+  window.open(telegramShareUrl, "_blank", "noopener,noreferrer");
+}
+
+function buildReferralLink() {
+  ensureReferralState();
+
+  const startParam = toTelegramStartParam(state.referrals.code);
+  const botUsername = String(CONFIG.telegramBotUsername || "").trim().replace(/^@/, "");
+  const appShortName = String(CONFIG.telegramAppShortName || "").trim().replace(/^\//, "");
+
+  if (botUsername && appShortName) {
+    return `https://t.me/${botUsername}/${appShortName}?startapp=${encodeURIComponent(startParam)}`;
+  }
+
+  if (botUsername) {
+    return `https://t.me/${botUsername}?startapp=${encodeURIComponent(startParam)}`;
+  }
+
+  const url = new URL(window.location.href);
+  url.hash = "";
+  url.search = "";
+  url.searchParams.set("ref", startParam);
+  return url.toString();
+}
+
+function renderReferrals() {
+  ensureReferralState();
+
+  const link = buildReferralLink();
+  if (els.referralCodeValue) els.referralCodeValue.textContent = state.referrals.code;
+  if (els.referralInvitedValue) els.referralInvitedValue.textContent = formatNumber(state.referrals.invitedFriends || 0);
+  if (els.referralEarnedValue) els.referralEarnedValue.textContent = `${formatNumber(state.referrals.rewardsEarned || 0)} RCT`;
+  if (els.referralLinkValue) els.referralLinkValue.value = link;
+
+  if (state.referrals.invitedBy) {
+    els.incomingReferralCard?.classList.remove("hidden");
+    if (els.incomingReferralValue) els.incomingReferralValue.textContent = `Код пригласившего: ref_${state.referrals.invitedBy}`;
+  } else {
+    els.incomingReferralCard?.classList.add("hidden");
+  }
+
+  if (els.referralInfoValue) {
+    els.referralInfoValue.textContent = getReferralStatusText();
+  }
+}
+
+function getReferralStatusText() {
+  const status = state.referrals.backendStatus;
+
+  if (status === "connected") {
+    const syncedAt = state.referrals.lastSyncAt
+      ? new Date(state.referrals.lastSyncAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+      : "только что";
+    return `Backend Supabase подключён. Рефералы считаются по Telegram ID, бонус ${formatNumber(CONFIG.referralReward)} RCT начисляется пригласившему игроку. Последняя синхронизация: ${syncedAt}.`;
+  }
+
+  if (status === "syncing") {
+    return "Подключаюсь к Supabase backend и проверяю Telegram-пользователя...";
+  }
+
+  if (status === "not_telegram") {
+    return "Backend прописан, но игра открыта не внутри Telegram Mini App. Реферальная ссылка уже генерируется, а проверка игрока сработает при запуске через Telegram.";
+  }
+
+  if (status === "error") {
+    return `Backend не ответил или вернул ошибку: ${state.referrals.backendError || "неизвестная ошибка"}. Проверь Secrets, Verify JWT и код функции register-player.`;
+  }
+
+  return "Ссылка генерируется через Telegram startapp. Для настоящего начисления 5 000 RCT нужен включённый Supabase backend register-player.";
 }
 
 function renderCategoryTabs() {

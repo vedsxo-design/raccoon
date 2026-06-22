@@ -171,6 +171,66 @@
         <div class="boost-list" id="boostList"></div>
       </section>
 
+
+      <section class="screen" id="screen-referrals">
+        <div class="section-title">
+          <div>
+            <span class="label">Реферальная система</span>
+            <h2>Друзья</h2>
+          </div>
+          <div class="pill">+5K RCT</div>
+        </div>
+
+        <div class="referral-hero">
+          <div class="referral-icon" aria-hidden="true">
+            <svg viewBox="0 0 72 72">
+              <circle cx="27" cy="26" r="13" />
+              <circle cx="49" cy="30" r="10" />
+              <path d="M10 61c2-15 12-24 27-24s25 9 27 24" />
+              <path d="M45 43c9 2 15 8 17 18" opacity=".55" />
+            </svg>
+          </div>
+          <div>
+            <span class="label">Твой реферальный код</span>
+            <h3 id="referralCodeValue">—</h3>
+            <p>Отправь ссылку другу. После регистрации приглашённого backend начислит тебе 5 000 RCT.</p>
+          </div>
+        </div>
+
+        <div class="referral-stats">
+          <div>
+            <span class="label">Приглашено</span>
+            <b id="referralInvitedValue">0</b>
+          </div>
+          <div>
+            <span class="label">Получено бонусов</span>
+            <b id="referralEarnedValue">0 RCT</b>
+          </div>
+        </div>
+
+        <div class="referral-link-card">
+          <span class="label">Ссылка для приглашения</span>
+          <div class="referral-link-row">
+            <input id="referralLinkValue" type="text" readonly value="" />
+            <button id="copyReferralBtn" class="buy-btn">Копировать</button>
+          </div>
+          <button id="shareReferralBtn" class="primary-btn referral-share-btn">Поделиться в Telegram</button>
+        </div>
+
+        <div id="incomingReferralCard" class="referral-claim-card hidden">
+          <div>
+            <span class="label">Вход по приглашению</span>
+            <b id="incomingReferralValue">—</b>
+            <p>Приглашение отправляется на backend. Бонус получает пригласивший игрок.</p>
+          </div>
+          <div class="coin-badge">REF</div>
+        </div>
+
+        <div class="info-card referral-note" id="referralInfoValue">
+          Backend подключается через Supabase Edge Function. Открой игру внутри Telegram Mini App, чтобы проверить пользователя и засчитать рефералку.
+        </div>
+      </section>
+
       <section class="screen" id="screen-listing">
         <div class="listing-card">
           <div class="listing-orbit">
@@ -196,6 +256,10 @@
         <span class="nav-icon">✦</span>
         <span>Бусты</span>
       </button>
+      <button class="nav-btn" data-screen="referrals">
+        <span class="nav-icon">♟</span>
+        <span>Друзья</span>
+      </button>
       <button class="nav-btn" data-screen="listing">
         <span class="nav-icon">◎</span>
         <span>Листинг</span>
@@ -213,6 +277,7 @@
     </div>
   </div>
 
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

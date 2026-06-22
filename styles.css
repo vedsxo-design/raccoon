@@ -713,9 +713,9 @@ h2 {
   width: min(calc(100% - 24px), 436px);
   transform: translateX(-50%);
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 7px;
-  padding: 8px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 5px;
+  padding: 7px;
   border-radius: 26px;
   background: rgba(14, 17, 24, .82);
   border: 1px solid var(--line);
@@ -724,19 +724,19 @@ h2 {
 }
 
 .nav-btn {
-  min-height: 58px;
+  min-height: 54px;
   display: grid;
   place-items: center;
   gap: 2px;
   color: var(--muted);
   border-radius: 20px;
   background: transparent;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 850;
 }
 
 .nav-icon {
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1;
 }
 
@@ -850,5 +850,149 @@ h2 {
   .boost-logo {
     width: 52px;
     height: 52px;
+  }
+}
+
+.referral-hero,
+.referral-link-card,
+.referral-claim-card {
+  background: linear-gradient(145deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .055));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.referral-hero {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 14px;
+  align-items: center;
+  padding: 15px;
+  margin-bottom: 12px;
+}
+
+.referral-icon {
+  width: 76px;
+  height: 76px;
+  display: grid;
+  place-items: center;
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, .28), rgba(255, 255, 255, .08)),
+    linear-gradient(145deg, rgba(247, 185, 85, .30), rgba(121, 224, 255, .16));
+  border: 1px solid var(--line);
+}
+
+.referral-icon svg {
+  width: 52px;
+  height: 52px;
+  fill: none;
+  stroke: #ffd886;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.referral-hero h3 {
+  margin-top: 5px;
+  font-size: 28px;
+  letter-spacing: -.5px;
+}
+
+.referral-hero p,
+.referral-claim-card p {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.referral-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.referral-stats > div {
+  min-width: 0;
+  padding: 13px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, .18);
+  border: 1px solid rgba(255, 255, 255, .07);
+}
+
+.referral-stats b {
+  display: block;
+  margin-top: 5px;
+  font-size: 20px;
+}
+
+.referral-link-card {
+  padding: 15px;
+  margin-bottom: 12px;
+}
+
+.referral-link-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.referral-link-row input {
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  border-radius: 15px;
+  outline: none;
+  background: rgba(0, 0, 0, .24);
+  border: 1px solid rgba(255, 255, 255, .10);
+}
+
+.referral-share-btn {
+  margin-top: 10px;
+}
+
+.referral-claim-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px;
+  margin-bottom: 12px;
+}
+
+.referral-claim-card.hidden {
+  display: none;
+}
+
+.referral-claim-card b {
+  display: block;
+  margin-top: 5px;
+  font-size: 17px;
+}
+
+.referral-note {
+  font-size: 13px;
+}
+
+@media (max-width: 380px) {
+  .referral-hero,
+  .referral-link-row {
+    grid-template-columns: 1fr;
+  }
+
+  .referral-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .referral-icon {
+    width: 64px;
+    height: 64px;
   }
 }
