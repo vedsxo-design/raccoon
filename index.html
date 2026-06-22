@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Raccoon Tap</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="mini-logo" aria-hidden="true">
+          <svg viewBox="0 0 48 48">
+            <path d="M10 22c0-8 6-14 14-14s14 6 14 14v8c0 7-6 12-14 12S10 37 10 30v-8z" />
+            <path d="M11 18 5 9l12 3M37 18l6-9-12 3" />
+            <path d="M13 24c4-5 18-5 22 0-2 6-20 6-22 0z" />
+            <circle cx="18" cy="24" r="2.3" />
+            <circle cx="30" cy="24" r="2.3" />
+            <path d="M22 30h4l-2 3z" />
+          </svg>
+        </div>
+        <div>
+          <strong>Raccoon Tap</strong>
+          <span>тапай, строй, бусти</span>
+        </div>
+      </div>
+      <button id="resetBtn" class="ghost-btn" title="Сбросить прогресс">Сброс</button>
+    </header>
+
+    <main>
+      <section class="screen active" id="screen-tap">
+        <div class="hero-card">
+          <div class="balance-row">
+            <div>
+              <span class="label">Баланс</span>
+              <h1 id="coinsValue">0</h1>
+            </div>
+            <div class="coin-badge">RCT</div>
+          </div>
+
+          <div class="stats-grid">
+            <div>
+              <span class="label">За тап</span>
+              <b id="tapPowerValue">+1</b>
+            </div>
+            <div>
+              <span class="label">Прибыль в час</span>
+              <b id="profitHourValue">0</b>
+            </div>
+            <div>
+              <span class="label">Энергия</span>
+              <b><span id="energyValue">1000</span>/<span id="maxEnergyValue">1000</span></b>
+            </div>
+          </div>
+
+          <div class="level-card">
+            <div class="level-head">
+              <div>
+                <span class="label">Уровень игрока</span>
+                <strong><span id="playerLevelValue">1</span> · <span id="playerRankValue">Rookie Raccoon</span></strong>
+              </div>
+              <div class="level-bonus" id="levelBonusValue">+0 к тапу</div>
+            </div>
+            <div class="progress level-progress">
+              <div id="levelBar" class="progress-fill"></div>
+            </div>
+            <div class="level-meta">
+              <span id="levelProgressText">0 / 200 XP</span>
+              <span><span id="totalTapsValue">0</span> тапов</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tap-zone" id="tapZone" role="button" tabindex="0" aria-label="Тапнуть енота">
+          <div class="tap-glow"></div>
+          <svg class="raccoon" viewBox="0 0 320 320" aria-hidden="true">
+            <defs>
+              <linearGradient id="fur" x1="0" x2="1">
+                <stop offset="0" stop-color="#7d8793"/>
+                <stop offset="1" stop-color="#4d5662"/>
+              </linearGradient>
+              <linearGradient id="belly" x1="0" x2="1">
+                <stop offset="0" stop-color="#f6f0df"/>
+                <stop offset="1" stop-color="#d8cfbd"/>
+              </linearGradient>
+            </defs>
+            <ellipse cx="160" cy="184" rx="98" ry="105" fill="url(#fur)"/>
+            <path d="M91 116 54 46l76 32z" fill="#57616d"/>
+            <path d="M229 116 266 46l-76 32z" fill="#57616d"/>
+            <path d="M88 112 66 70l46 21z" fill="#e4d2c0"/>
+            <path d="M232 112l22-42-46 21z" fill="#e4d2c0"/>
+            <ellipse cx="160" cy="164" rx="88" ry="78" fill="#8f99a5"/>
+            <path d="M70 164c26-42 154-42 180 0-16 48-164 48-180 0z" fill="#252a32"/>
+            <ellipse cx="112" cy="167" rx="33" ry="26" fill="#f3eadc"/>
+            <ellipse cx="208" cy="167" rx="33" ry="26" fill="#f3eadc"/>
+            <circle cx="113" cy="166" r="10" fill="#151922"/>
+            <circle cx="207" cy="166" r="10" fill="#151922"/>
+            <circle cx="117" cy="162" r="3" fill="#fff"/>
+            <circle cx="211" cy="162" r="3" fill="#fff"/>
+            <ellipse cx="160" cy="203" rx="44" ry="33" fill="url(#belly)"/>
+            <path d="M147 194h26l-13 14z" fill="#20242c"/>
+            <path d="M160 208c-2 13-13 20-28 18M160 208c2 13 13 20 28 18" stroke="#20242c" stroke-width="7" stroke-linecap="round" fill="none"/>
+            <path d="M78 250c22 39 91 55 147 23 31-18 49-47 56-77 12 70-27 124-94 130-65 5-113-26-109-76z" fill="#68727e"/>
+            <path d="M246 240c-28 16-63 24-106 22" stroke="#2b313a" stroke-width="16" stroke-linecap="round" opacity=".55"/>
+            <path d="M223 273c-23 12-55 17-91 12" stroke="#2b313a" stroke-width="14" stroke-linecap="round" opacity=".45"/>
+          </svg>
+        </div>
+
+        <div class="energy-card">
+          <div class="energy-head">
+            <span>Энергия восстанавливается сама</span>
+            <span id="energyRegenValue">+3/сек</span>
+          </div>
+          <div class="progress">
+            <div id="energyBar" class="progress-fill"></div>
+          </div>
+
+          <div class="energy-upgrade">
+            <div>
+              <span class="label">Ёмкость энергии</span>
+              <strong>ур. <span id="energyCapLevelValue">0</span>/<span id="energyCapMaxLevelValue">50</span></strong>
+              <p id="energyCapInfoValue">+150 энергии за уровень</p>
+            </div>
+            <button id="energyCapBtn" class="buy-btn">Улучшить</button>
+          </div>
+        </div>
+
+        <div class="active-boosts" id="activeBoosts"></div>
+      </section>
+
+      <section class="screen" id="screen-businesses">
+        <div class="section-title">
+          <div>
+            <span class="label">Пассивный доход</span>
+            <h2>Бизнесы</h2>
+          </div>
+          <div class="pill"><span id="ownedBusinessesValue">0</span> ур.</div>
+        </div>
+
+        <div class="category-tabs" id="categoryTabs"></div>
+
+        <div class="business-summary">
+          <div>
+            <span class="label">Раздел</span>
+            <b id="categoryNameValue">Markets</b>
+          </div>
+          <div>
+            <span class="label">Доход раздела</span>
+            <b id="categoryProfitValue">0/час</b>
+          </div>
+        </div>
+
+        <div class="business-list" id="businessList"></div>
+      </section>
+
+      <section class="screen" id="screen-boosts">
+        <div class="section-title">
+          <div>
+            <span class="label">Ежедневные усиления</span>
+            <h2>Бусты</h2>
+          </div>
+          <div class="pill" id="boostDateValue">Сегодня</div>
+        </div>
+
+        <div class="info-card">
+          Бусты усиливают доход за тап. Каждый буст длится 1 минуту.
+          После активации запускается точный таймер восстановления на 24 часа.
+        </div>
+
+        <div class="boost-list" id="boostList"></div>
+      </section>
+
+      <section class="screen" id="screen-listing">
+        <div class="listing-card">
+          <div class="listing-orbit">
+            <div></div><div></div><div></div>
+          </div>
+          <span class="label">Листинг RCT</span>
+          <h2>Скоро</h2>
+          <p>Здесь можно будет разместить информацию о будущей крипте, биржах, датах и условиях листинга.</p>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav">
+      <button class="nav-btn active" data-screen="tap">
+        <span class="nav-icon">⌁</span>
+        <span>Тап</span>
+      </button>
+      <button class="nav-btn" data-screen="businesses">
+        <span class="nav-icon">▦</span>
+        <span>Бизнесы</span>
+      </button>
+      <button class="nav-btn" data-screen="boosts">
+        <span class="nav-icon">✦</span>
+        <span>Бусты</span>
+      </button>
+      <button class="nav-btn" data-screen="listing">
+        <span class="nav-icon">◎</span>
+        <span>Листинг</span>
+      </button>
+    </nav>
+
+    <div id="floatingLayer" class="floating-layer"></div>
+    <div id="toast" class="toast"></div>
+    <div id="offlineModal" class="modal hidden">
+      <div class="modal-card">
+        <h3>Офлайн-доход</h3>
+        <p id="offlineText">Енот принёс монеты, пока тебя не было.</p>
+        <button id="offlineClose" class="primary-btn">Забрать</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
