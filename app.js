@@ -195,7 +195,8 @@ const defaultState = {
     status: "idle",
     error: "",
     lastSyncAt: 0
-  }
+  },
+  betaNoticeSeen: false
 };
 
 let state = loadState();
@@ -235,6 +236,8 @@ const els = {
   boostList: $("#boostList"),
   activeBoosts: $("#activeBoosts"),
   toast: $("#toast"),
+  betaModal: $("#betaModal"),
+  betaModalClose: $("#betaModalClose"),
   resetBtn: $("#resetBtn"),
   offlineModal: $("#offlineModal"),
   offlineText: $("#offlineText"),
@@ -1268,7 +1271,7 @@ function renderBusinesses() {
     const card = document.createElement("article");
     card.className = "business-card";
     card.innerHTML = `
-      <div class="biz-logo">${businessLogoSvg(business.logoSeed)}</div>
+      <div class="biz-logo">${businessLogoSvg(business.logoSeed, business.categoryId)}</div>
       <div class="business-main">
         <div class="business-top">
           <div>
@@ -1436,6 +1439,7 @@ function activateBoost(boostId) {
   state.usedBoostDates[boost.id] = getDateKey();
   saveState();
   renderAll();
+showBetaNotice();
   showToast(`${boost.name} активирован.`);
 }
 
@@ -1738,6 +1742,19 @@ function formatLongTime(milliseconds) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+
+function showBetaNotice() {
+  if (!els.betaModal || state.betaNoticeSeen) return;
+  els.betaModal.classList.remove("hidden");
+}
+
+function closeBetaNotice() {
+  if (!els.betaModal) return;
+  els.betaModal.classList.add("hidden");
+  state.betaNoticeSeen = true;
+  saveState();
+}
+
 function showToast(message) {
   clearTimeout(toastTimer);
   els.toast.textContent = message;
@@ -1745,61 +1762,67 @@ function showToast(message) {
   toastTimer = setTimeout(() => els.toast.classList.remove("show"), 2200);
 }
 
-function businessLogoSvg(seed) {
-  const palettes = [
-    ["#ffd886", "#f0a735", "#38230b"],
-    ["#79e0ff", "#5c8dff", "#07182b"],
-    ["#80f2a6", "#35b978", "#062013"],
-    ["#ff9fbb", "#c56bff", "#24051f"],
-    ["#d9e1ea", "#7d8793", "#151922"]
-  ];
+function businessLogoSvg(seed, categoryId = "") {
+  const type = categoryId || (seed < 20 ? "markets" : seed < 40 ? "pr" : seed < 60 ? "legal" : "special");
 
-  const palette = palettes[seed % palettes.length];
-  const shape = seed % 5;
-  const rotate = (seed * 29) % 360;
+  const common = `
+    <defs>
+      <linearGradient id="bizGold${seed}" x1="0" x2="1" y1="0" y2="1">
+        <stop offset="0" stop-color="#ffe7a3"/>
+        <stop offset="1" stop-color="#f0a735"/>
+      </linearGradient>
+      <linearGradient id="bizBlue${seed}" x1="0" x2="1" y1="0" y2="1">
+        <stop offset="0" stop-color="#79e0ff"/>
+        <stop offset="1" stop-color="#1764d8"/>
+      </linearGradient>
+    </defs>
+    <rect x="4" y="4" width="56" height="56" rx="18" fill="#101a2d" stroke="url(#bizGold${seed})" stroke-width="2.4"/>
+    <circle cx="48" cy="16" r="7" fill="url(#bizGold${seed})"/>
+    <path d="M45 16c2-4 5-4 7 0-1 4-6 4-7 0z" fill="#4b2a08" opacity=".75"/>
+  `;
 
-  if (shape === 0) {
-    return `
-      <svg viewBox="0 0 64 64" aria-hidden="true">
-        <rect x="8" y="14" width="48" height="38" rx="12" fill="${palette[0]}"/>
-        <path d="M16 28h32M20 40h24" stroke="${palette[2]}" stroke-width="6" stroke-linecap="round"/>
-        <path d="M22 14c1-8 19-8 20 0" fill="none" stroke="${palette[1]}" stroke-width="6" stroke-linecap="round"/>
-      </svg>`;
-  }
+  const icons = {
+    markets: `
+      ${common}
+      <path d="M15 28h34v23H15z" fill="#f3d3a0"/>
+      <path d="M13 23h38l-4-8H17z" fill="url(#bizBlue${seed})"/>
+      <path d="M14 25h7v7h-7zm7 0h7v7h-7zm7 0h7v7h-7zm7 0h7v7h-7zm7 0h7v7h-7z" fill="#fff3dc" opacity=".9"/>
+      <rect x="20" y="36" width="10" height="15" rx="2" fill="#17233b"/>
+      <rect x="35" y="36" width="10" height="8" rx="2" fill="#203a62"/>
+      <circle cx="44" cy="44" r="8" fill="url(#bizGold${seed})"/>
+    `,
+    pr: `
+      ${common}
+      <path d="M16 37c8-8 18-8 28 0v12H16z" fill="#17233b"/>
+      <circle cx="25" cy="32" r="6" fill="url(#bizGold${seed})"/>
+      <circle cx="17" cy="36" r="5" fill="#2b77d9"/>
+      <circle cx="40" cy="36" r="5" fill="#2b77d9"/>
+      <path d="M31 23l16-7v20l-16-5z" fill="#fff1d3"/>
+      <path d="M23 24h9v10h-9z" fill="url(#bizBlue${seed})"/>
+      <path d="M47 18c4 2 6 5 6 9s-2 7-6 9" stroke="url(#bizGold${seed})" stroke-width="3" fill="none" stroke-linecap="round"/>
+    `,
+    legal: `
+      ${common}
+      <path d="M16 16h24c4 0 7 3 7 7v27H16z" fill="#f3e2c1"/>
+      <path d="M22 24h17M22 31h16M22 38h12" stroke="#7b6a55" stroke-width="2" stroke-linecap="round"/>
+      <path d="M36 30h18v10c0 9-7 14-9 15-2-1-9-6-9-15z" fill="url(#bizBlue${seed})" stroke="url(#bizGold${seed})" stroke-width="2"/>
+      <path d="M45 34v12M39 38h12M40 46h10" stroke="url(#bizGold${seed})" stroke-width="2" stroke-linecap="round"/>
+      <path d="M23 51l14-8 3 5-14 8z" fill="#6d391c"/>
+      <path d="M35 41l6-3 3 5-6 3z" fill="url(#bizGold${seed})"/>
+    `,
+    special: `
+      ${common}
+      <circle cx="34" cy="34" r="18" fill="none" stroke="#224b83" stroke-width="2"/>
+      <circle cx="34" cy="34" r="11" fill="none" stroke="#2c78c8" stroke-width="2"/>
+      <path d="M19 48l26-26" stroke="#79e0ff" stroke-width="3" stroke-linecap="round"/>
+      <path d="M20 49c9-1 21-7 30-21" stroke="url(#bizGold${seed})" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <path d="M21 50h25v8H21z" fill="#1a2a45"/>
+      <rect x="39" y="40" width="16" height="13" rx="3" fill="#27364c" stroke="url(#bizGold${seed})" stroke-width="1.5"/>
+      <path d="M43 46h8" stroke="#79e0ff" stroke-width="2" stroke-linecap="round"/>
+    `
+  };
 
-  if (shape === 1) {
-    return `
-      <svg viewBox="0 0 64 64" aria-hidden="true">
-        <circle cx="32" cy="32" r="25" fill="${palette[0]}"/>
-        <path d="M20 39 30 24l8 11 7-7 5 11" fill="none" stroke="${palette[2]}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="24" cy="22" r="4" fill="${palette[1]}"/>
-      </svg>`;
-  }
-
-  if (shape === 2) {
-    return `
-      <svg viewBox="0 0 64 64" aria-hidden="true">
-        <path d="M32 6 56 20v24L32 58 8 44V20z" fill="${palette[0]}"/>
-        <path d="M20 24h24M20 34h24M20 44h16" stroke="${palette[2]}" stroke-width="5" stroke-linecap="round"/>
-        <path d="M47 15v16" stroke="${palette[1]}" stroke-width="6" stroke-linecap="round"/>
-      </svg>`;
-  }
-
-  if (shape === 3) {
-    return `
-      <svg viewBox="0 0 64 64" aria-hidden="true">
-        <rect x="10" y="10" width="44" height="44" rx="18" fill="${palette[0]}" transform="rotate(${rotate} 32 32)"/>
-        <path d="M21 37c7 7 17 7 24 0M22 25h20" stroke="${palette[2]}" stroke-width="6" stroke-linecap="round"/>
-        <circle cx="45" cy="22" r="5" fill="${palette[1]}"/>
-      </svg>`;
-  }
-
-  return `
-    <svg viewBox="0 0 64 64" aria-hidden="true">
-      <path d="M12 48 23 14h18l11 34z" fill="${palette[0]}"/>
-      <path d="M24 48V30h16v18" fill="${palette[1]}"/>
-      <path d="M20 48h28M28 22h8" stroke="${palette[2]}" stroke-width="5" stroke-linecap="round"/>
-    </svg>`;
+  return `<svg viewBox="0 0 64 64" aria-hidden="true">${icons[type] || icons.markets}</svg>`;
 }
 
 function boostLogoSvg(index) {
@@ -1817,3 +1840,5 @@ function boostLogoSvg(index) {
       <path d="M34 4 12 36h16l-4 24 28-36H36z" fill="none" stroke="${p[2]}" stroke-width="4" stroke-linejoin="round"/>
     </svg>`;
 }
+
+els.betaModalClose?.addEventListener("click", closeBetaNotice);

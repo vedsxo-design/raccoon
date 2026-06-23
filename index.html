@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Raccoon Tap</title>
-  <link rel="stylesheet" href="styles.css?v=12" />
+  <link rel="stylesheet" href="styles.css?v=13" />
 </head>
 <body>
   <div class="app-shell">
@@ -363,7 +363,47 @@
     </nav>
 
     <div id="floatingLayer" class="floating-layer"></div>
-    <div id="toast" class="toast"></div>
+  
+  <div class="modal hidden" id="betaModal" role="dialog" aria-modal="true" aria-labelledby="betaModalTitle">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card beta-modal-card">
+      <div class="beta-emblem" aria-hidden="true">
+        <svg viewBox="0 0 96 96">
+          <defs>
+            <linearGradient id="betaGold" x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0" stop-color="#ffe7a3"/>
+              <stop offset="1" stop-color="#f0a735"/>
+            </linearGradient>
+            <linearGradient id="betaBlue" x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0" stop-color="#79e0ff"/>
+              <stop offset="1" stop-color="#1764d8"/>
+            </linearGradient>
+          </defs>
+          <circle cx="48" cy="48" r="40" fill="url(#betaGold)"/>
+          <circle cx="48" cy="48" r="31" fill="#16243a"/>
+          <path d="M26 49c7-12 37-12 44 0-5 15-39 15-44 0z" fill="#111722"/>
+          <path d="M28 41 17 22l24 10M68 41l11-19-24 10" fill="#5e6877"/>
+          <ellipse cx="36" cy="50" rx="9" ry="7" fill="#f6ecd9"/>
+          <ellipse cx="60" cy="50" rx="9" ry="7" fill="#f6ecd9"/>
+          <circle cx="37" cy="50" r="3" fill="#121722"/>
+          <circle cx="59" cy="50" r="3" fill="#121722"/>
+          <path d="M44 60h8l-4 5z" fill="#f6ecd9"/>
+          <path d="M48 65c-2 5-7 8-13 7M48 65c2 5 7 8 13 7" stroke="#f6ecd9" stroke-width="3" stroke-linecap="round" fill="none"/>
+          <path d="M14 67 3 81h31l-8-14zM82 67l11 14H62l8-14z" fill="url(#betaBlue)"/>
+        </svg>
+      </div>
+      <div class="beta-sparkles" aria-hidden="true">
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <h2 id="betaModalTitle">Открытый бета-тест</h2>
+      <p>Спасибо, что участвуешь в тесте Raccoon Tap.</p>
+      <p>Некоторые механики, баланс и награды могут изменяться.</p>
+      <p>Желаем удачной игры!</p>
+      <button id="betaModalClose" class="primary-btn beta-modal-btn">Понятно</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
     <div id="offlineModal" class="modal hidden">
       <div class="modal-card">
         <h3>Офлайн-доход</h3>
@@ -374,6 +414,6 @@
   </div>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="app.js?v=12"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>
