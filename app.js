@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v18-tg-channel",
+  appVersion: "v19-passive-income-fix",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -171,6 +171,7 @@ const defaultState = {
   energyCapacityLevel: 0,
   energyCapacityCooldownEnd: 0,
   lastTick: Date.now(),
+  lastPassiveEarned: 0,
   businessLevels: {},
   businessCooldowns: {},
   boostCooldownEnds: {},
@@ -323,6 +324,24 @@ function init() {
     applyElapsedProgress(false);
     saveState();
   });
+
+  window.addEventListener("pagehide", () => {
+    applyElapsedProgress(false);
+    saveState();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      applyElapsedProgress(false);
+      saveState();
+      return;
+    }
+
+    applyElapsedProgress(true);
+    saveState();
+    renderAll();
+    syncTelegramPlayer({ force: true });
+  });
 }
 
 function loadState() {
@@ -334,6 +353,7 @@ function loadState() {
       ...structuredClone(defaultState),
       ...parsed,
       totalTaps: Number(parsed.totalTaps || 0),
+      lastPassiveEarned: Number(parsed.lastPassiveEarned || 0),
       energyCapacityLevel: Number(parsed.energyCapacityLevel || 0),
       energyCapacityCooldownEnd: Number(parsed.energyCapacityCooldownEnd || 0),
       businessLevels: parsed.businessLevels || {},
@@ -373,7 +393,9 @@ function gameLoop() {
 
 function applyElapsedProgress(showOffline) {
   const now = Date.now();
-  const elapsedSecondsRaw = Math.max(0, Math.floor((now - (state.lastTick || now)) / 1000));
+  const previousTick = Number(state.lastTick || now);
+  const elapsedSecondsRaw = Math.max(0, Math.floor((now - previousTick) / 1000));
+
   if (elapsedSecondsRaw <= 0) {
     state.lastTick = now;
     cleanExpiredBoosts();
@@ -381,12 +403,19 @@ function applyElapsedProgress(showOffline) {
   }
 
   const elapsedSeconds = Math.min(elapsedSecondsRaw, CONFIG.maxOfflineSeconds);
-  const profitPerHour = getTotalProfitPerHour();
-  const passiveEarned = (profitPerHour / 3600) * elapsedSeconds;
+  const profitPerHour = getPassiveProfitPerHour();
+
+  // Важно: начисляем только целые RCT и сразу сохраняем lastTick.
+  // Это защищает от повторного начисления одного и того же AFK-времени,
+  // если Telegram/браузер выгрузил приложение до обычного автосохранения.
+  const passiveEarned = Math.floor((profitPerHour * elapsedSeconds) / 3600);
 
   if (passiveEarned > 0) {
-    state.coins += passiveEarned;
-    state.totalEarned += passiveEarned;
+    state.coins = Math.max(0, Number(state.coins || 0)) + passiveEarned;
+    state.totalEarned = Math.max(0, Number(state.totalEarned || 0)) + passiveEarned;
+    state.lastPassiveEarned = passiveEarned;
+  } else {
+    state.lastPassiveEarned = 0;
   }
 
   state.energy = Math.min(
@@ -397,8 +426,15 @@ function applyElapsedProgress(showOffline) {
   state.lastTick = now;
   cleanExpiredBoosts();
 
+  // Сохраняем сразу, а не ждём 5 секунд.
+  // Иначе можно было открыть/закрыть приложение и получить AFK-доход повторно.
+  if (passiveEarned > 0 || elapsedSecondsRaw > 15) {
+    saveState();
+  }
+
   if (showOffline && elapsedSecondsRaw > 15 && passiveEarned >= 1) {
-    els.offlineText.textContent = `Пока тебя не было, бизнесы принесли ${formatNumber(passiveEarned)} RCT. Учитывалось максимум 12 часов офлайна, чтобы баланс не ломался.`;
+    const elapsedText = formatElapsedShort(elapsedSeconds);
+    els.offlineText.textContent = `Пока тебя не было ${elapsedText}, бизнесы принесли ${formatNumber(passiveEarned)} RCT. Расчёт шёл от прибыли ${formatNumber(profitPerHour)}/час.`;
     els.offlineModal.classList.remove("hidden");
   }
 }
@@ -692,7 +728,7 @@ function renderAll() {
 
   els.coinsValue.textContent = formatNumber(state.coins);
   els.tapPowerValue.textContent = `+${formatNumber(getTapPower())}`;
-  els.profitHourValue.textContent = `${formatNumber(getTotalProfitPerHour())}/час`;
+  els.profitHourValue.textContent = `${formatNumber(getPassiveProfitPerHour())}/час`;
   const maxEnergy = getMaxEnergy();
   els.maxEnergyValue.textContent = formatNumber(maxEnergy);
   els.energyValue.textContent = formatNumber(Math.floor(state.energy));
@@ -977,6 +1013,7 @@ function applyBackendPlayerData(data) {
   }
 
   state.coins = serverBalance;
+  state.lastTick = Date.now();
   state.totalEarned = Math.max(
     Number(state.totalEarned || 0),
     Number(user.total_earned || 0),
@@ -1682,6 +1719,29 @@ function getTapPower() {
 
 function getOwnedLevels() {
   return Object.values(state.businessLevels || {}).reduce((sum, level) => sum + level, 0);
+}
+
+function getPassiveProfitPerHour() {
+  const serverProfit = Math.max(0, Math.floor(Number(state.leaderboard?.myProfitPerHour || 0)));
+
+  // Если backend уже подключён, пассивный доход считаем по серверной прибыли.
+  // Это убирает рассинхрон, когда локальные уровни/старый кэш показывали неправильный доход.
+  if (state.leaderboard?.status === "connected" && serverProfit > 0) {
+    return serverProfit;
+  }
+
+  return Math.max(0, Math.floor(getTotalProfitPerHour()));
+}
+
+function formatElapsedShort(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+
+  if (hours > 0 && minutes > 0) return `${hours}ч ${minutes}м`;
+  if (hours > 0) return `${hours}ч`;
+  if (minutes > 0) return `${minutes}м`;
+  return `${total}с`;
 }
 
 function getTotalProfitPerHour() {
