@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v22-afk-modal-strict",
+  appVersion: "v23-force-register",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -213,6 +213,8 @@ let lastManualSyncAt = 0;
 let betaNoticePending = false;
 let pendingAfkModalFromBackground = false;
 let pendingAfkMeasuredSeconds = 0;
+let firstBackendRegistrationDone = false;
+let firstBackendRegistrationPromise = null;
 let supportProjectBusy = false;
 
 const $ = (selector) => document.querySelector(selector);
@@ -292,6 +294,35 @@ const els = {
 
 init();
 
+
+function bindRegistrationGuard() {
+  const tapTargets = [
+    els.raccoonBtn,
+    els.tapButton,
+    els.raccoon,
+    $("#raccoonBtn"),
+    $("#tapButton"),
+    $(".raccoon")
+  ].filter(Boolean);
+
+  tapTargets.forEach((target) => {
+    target.addEventListener("pointerdown", () => {
+      if (!firstBackendRegistrationDone) {
+        ensureBackendRegistration({ showWarning: true });
+      }
+    }, { passive: true });
+  });
+}
+
+
+function scheduleRegistrationHealthCheck() {
+  setTimeout(() => {
+    if (!isBackendConnected()) {
+      ensureBackendRegistration({ showWarning: true });
+    }
+  }, 5000);
+}
+
 function init() {
   console.info("Raccoon Tap loaded:", CONFIG.appVersion);
   initTelegramApp();
@@ -315,9 +346,12 @@ function init() {
   bindProfileActions();
   bindHelperSoonActions();
   bindTelegramChannelActions();
+  bindRegistrationGuard();
   renderCategoryTabs();
   renderBoosts();
   renderAll();
+  ensureBackendRegistration({ showWarning: false });
+  scheduleRegistrationHealthCheck();
   syncTelegramPlayer();
   setTimeout(showBetaNotice, 300);
 
@@ -936,6 +970,65 @@ async function callGameBackend(extraBody = {}) {
   return data;
 }
 
+
+function isBackendConnected() {
+  return Boolean(
+    state.referrals?.backendEnabled &&
+    state.referrals?.backendStatus === "connected" &&
+    state.referrals?.telegramId
+  );
+}
+
+function showRegistrationWarning(reason = "") {
+  const message = reason || "Открой игру через Telegram-бота, чтобы прогресс сохранился.";
+  showToast(message);
+}
+
+async function ensureBackendRegistration(options = {}) {
+  if (isBackendConnected()) {
+    firstBackendRegistrationDone = true;
+    return true;
+  }
+
+  if (!isTelegramMiniAppReady()) {
+    state.referrals.backendStatus = "not_telegram";
+    renderReferralsIfOpen();
+    renderProfileIfOpen();
+    if (options.showWarning) {
+      showRegistrationWarning("Открой игру через Telegram-бота, иначе игрок не попадёт в базу и лидерборд.");
+    }
+    return false;
+  }
+
+  if (firstBackendRegistrationPromise) {
+    return firstBackendRegistrationPromise;
+  }
+
+  firstBackendRegistrationPromise = (async () => {
+    try {
+      await syncTelegramPlayer({ force: true, silent: true });
+      const ok = isBackendConnected();
+      firstBackendRegistrationDone = ok;
+
+      if (!ok && options.showWarning) {
+        showRegistrationWarning("Регистрация на сервере ещё не прошла. Проверь интернет и открой игру через бота.");
+      }
+
+      return ok;
+    } catch (error) {
+      console.warn("Backend registration failed:", error);
+      if (options.showWarning) {
+        showRegistrationWarning("Серверная регистрация не прошла. Прогресс может не попасть в лидерборд.");
+      }
+      return false;
+    } finally {
+      firstBackendRegistrationPromise = null;
+    }
+  })();
+
+  return firstBackendRegistrationPromise;
+}
+
 async function syncTelegramPlayer(options = {}) {
   ensureReferralState();
 
@@ -997,6 +1090,7 @@ function applyBackendPlayerData(data, options = {}) {
   state.referrals.backendStatus = "connected";
   state.referrals.backendError = "";
   state.referrals.lastSyncAt = Date.now();
+  firstBackendRegistrationDone = true;
 
   if (backendTelegramId) state.referrals.telegramId = backendTelegramId;
   if (backendReferralCode) state.referrals.code = backendReferralCode;
