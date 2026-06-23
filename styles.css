@@ -1678,3 +1678,60 @@ h2 {
     width: 100%;
   }
 }
+
+
+/* v18 Telegram channel card */
+.tg-channel-card {
+  display: grid;
+  grid-template-columns: 54px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  margin-top: 12px;
+}
+
+.tg-channel-icon {
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  font-size: 27px;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, .30), rgba(255, 255, 255, .08)),
+    linear-gradient(145deg, rgba(121, 224, 255, .34), rgba(92, 141, 255, .18));
+  border: 1px solid rgba(121, 224, 255, .38);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, .25);
+}
+
+.tg-channel-body {
+  min-width: 0;
+}
+
+.tg-channel-body h3 {
+  margin-top: 4px;
+  font-size: 18px;
+  letter-spacing: -.3px;
+}
+
+.tg-channel-body p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.tg-channel-btn {
+  min-width: 92px;
+}
+
+@media (max-width: 430px) {
+  .tg-channel-card {
+    grid-template-columns: 48px 1fr;
+  }
+
+  .tg-channel-btn {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}

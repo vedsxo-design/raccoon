@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v17-helper-soon",
+  appVersion: "v18-tg-channel",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -17,6 +17,7 @@ const CONFIG = {
   maxPlayerLevel: 60,
   referralReward: 5000,
   telegramBotUsername: "raccoontap_bot",
+  telegramChannelUrl: "https://t.me/raccoontapofficial",
   telegramAppShortName: "",
   backendUrl: "https://nmivnzqontadqegdvhdl.supabase.co/functions/v1/register-player",
   starsInvoiceUrl: "https://nmivnzqontadqegdvhdl.supabase.co/functions/v1/create-star-invoice",
@@ -281,7 +282,8 @@ const els = {
   refreshProfileBtn: $("#refreshProfileBtn"),
   raccoonHelperBtn: $("#raccoonHelperBtn"),
   helperSoonModal: $("#helperSoonModal"),
-  helperSoonClose: $("#helperSoonClose")
+  helperSoonClose: $("#helperSoonClose"),
+  tgChannelBtn: $("#tgChannelBtn")
 };
 
 init();
@@ -307,6 +309,7 @@ function init() {
   bindLeaderboardActions();
   bindProfileActions();
   bindHelperSoonActions();
+  bindTelegramChannelActions();
   renderCategoryTabs();
   renderBoosts();
   renderAll();
@@ -1062,6 +1065,32 @@ function openHelperSoonModal() {
 function closeHelperSoonModal() {
   if (!els.helperSoonModal) return;
   els.helperSoonModal.classList.add("hidden");
+}
+
+
+function openTelegramChannel() {
+  const url = CONFIG.telegramChannelUrl || "https://t.me/raccoontapofficial";
+  const tg = window.Telegram?.WebApp;
+
+  try {
+    if (tg?.openTelegramLink) {
+      tg.openTelegramLink(url);
+      return;
+    }
+
+    if (tg?.openLink) {
+      tg.openLink(url);
+      return;
+    }
+  } catch (error) {
+    console.warn("Cannot open Telegram channel via WebApp API:", error);
+  }
+
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function bindTelegramChannelActions() {
+  els.tgChannelBtn?.addEventListener("click", openTelegramChannel);
 }
 
 function bindHelperSoonActions() {
