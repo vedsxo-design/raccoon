@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v12-beta-safe",
+  appVersion: "v15-stars-support",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -19,6 +19,8 @@ const CONFIG = {
   telegramBotUsername: "raccoontap_bot",
   telegramAppShortName: "",
   backendUrl: "https://nmivnzqontadqegdvhdl.supabase.co/functions/v1/register-player",
+  starsInvoiceUrl: "https://nmivnzqontadqegdvhdl.supabase.co/functions/v1/create-star-invoice",
+  supportStarsAmount: 100,
   supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5taXZuenFvbnRhZHFlZ2R2aGRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxNTg4MzEsImV4cCI6MjA5NzczNDgzMX0.OsEXGOk0rVK0EBq1RRIH20tJgPIJWkZsDb3MqmGs9aA"
 };
 
@@ -206,6 +208,7 @@ let lastRenderSecond = 0;
 let backendActionBusy = false;
 let lastManualSyncAt = 0;
 let betaNoticePending = false;
+let supportProjectBusy = false;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -240,6 +243,10 @@ const els = {
   betaModal: $("#betaModal"),
   betaModalClose: $("#betaModalClose"),
   resetBtn: $("#resetBtn"),
+  supportProjectBtn: $("#supportProjectBtn"),
+  supportProjectModal: $("#supportProjectModal"),
+  supportProjectClose: $("#supportProjectClose"),
+  supportProjectPay: $("#supportProjectPay"),
   offlineModal: $("#offlineModal"),
   offlineText: $("#offlineText"),
   offlineClose: $("#offlineClose"),
@@ -290,6 +297,7 @@ function init() {
   bindNavigation();
   bindTap();
   bindReset();
+  bindSupportProjectActions();
   bindEnergyCapacityUpgrade();
   bindReferralActions();
   bindLeaderboardActions();
@@ -473,6 +481,125 @@ function bindReset() {
     syncTelegramPlayer({ force: true });
     showToast("Локальный прогресс очищен. Серверные данные снова подтянутся из Supabase.");
   });
+}
+
+
+function bindSupportProjectActions() {
+  els.supportProjectBtn?.addEventListener("click", openSupportProjectModal);
+  els.supportProjectClose?.addEventListener("click", closeSupportProjectModal);
+  els.supportProjectPay?.addEventListener("click", paySupportProject);
+}
+
+function openSupportProjectModal() {
+  if (!els.supportProjectModal) return;
+  els.supportProjectModal.classList.remove("hidden");
+}
+
+function closeSupportProjectModal() {
+  if (!els.supportProjectModal) return;
+  els.supportProjectModal.classList.add("hidden");
+}
+
+function setSupportPayLoading(isLoading) {
+  if (!els.supportProjectPay) return;
+  els.supportProjectPay.disabled = Boolean(isLoading);
+  els.supportProjectPay.classList.toggle("loading", Boolean(isLoading));
+  els.supportProjectPay.textContent = isLoading
+    ? "Готовлю оплату..."
+    : `Поддержать за ${CONFIG.supportStarsAmount || 100} ⭐`;
+}
+
+async function createSupportInvoiceLink() {
+  const invoiceUrl = String(CONFIG.starsInvoiceUrl || "").trim();
+  if (!invoiceUrl) {
+    throw new Error("Stars invoice backend URL is not configured.");
+  }
+
+  const initData = getTelegramInitData();
+  if (!initData) {
+    throw new Error("Открой игру через Telegram Mini App, чтобы поддержать проект через Stars.");
+  }
+
+  const headers = {
+    "Content-Type": "application/json"
+  };
+
+  if (CONFIG.supabaseAnonKey) {
+    headers.apikey = CONFIG.supabaseAnonKey;
+    headers.Authorization = `Bearer ${CONFIG.supabaseAnonKey}`;
+  }
+
+  const response = await fetch(invoiceUrl, {
+    method: "POST",
+    headers,
+    cache: "no-store",
+    body: JSON.stringify({
+      initData,
+      appVersion: CONFIG.appVersion,
+      amountStars: CONFIG.supportStarsAmount || 100
+    })
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok || !data?.ok || !data?.invoiceLink) {
+    throw new Error(data?.error || `Stars invoice response ${response.status}`);
+  }
+
+  return data.invoiceLink;
+}
+
+async function paySupportProject() {
+  if (supportProjectBusy) return;
+
+  const tg = window.Telegram?.WebApp;
+  if (!isTelegramMiniAppReady()) {
+    showToast("Открой игру через Telegram Mini App, чтобы поддержать проект.");
+    return;
+  }
+
+  if (!tg?.openInvoice) {
+    showToast("Твой Telegram пока не поддерживает оплату invoice внутри Mini App.");
+    return;
+  }
+
+  supportProjectBusy = true;
+  setSupportPayLoading(true);
+
+  try {
+    const invoiceLink = await createSupportInvoiceLink();
+
+    tg.openInvoice(invoiceLink, (status) => {
+      supportProjectBusy = false;
+      setSupportPayLoading(false);
+
+      if (status === "paid") {
+        closeSupportProjectModal();
+        showToast("Спасибо за поддержку проекта ⭐");
+        try {
+          tg.HapticFeedback?.notificationOccurred?.("success");
+        } catch (_) {}
+        return;
+      }
+
+      if (status === "cancelled") {
+        showToast("Оплата отменена.");
+        return;
+      }
+
+      if (status === "failed") {
+        showToast("Оплата не прошла. Попробуй позже.");
+        return;
+      }
+
+      showToast("Оплата ожидает подтверждения Telegram.");
+    });
+  } catch (error) {
+    supportProjectBusy = false;
+    setSupportPayLoading(false);
+    console.warn("Stars support payment failed:", error);
+    showToast(String(error?.message || error));
+  }
 }
 
 function bindEnergyCapacityUpgrade() {
