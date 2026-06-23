@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v15-stars-support",
+  appVersion: "v16-stars-invoice-fix",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -247,6 +247,7 @@ const els = {
   supportProjectModal: $("#supportProjectModal"),
   supportProjectClose: $("#supportProjectClose"),
   supportProjectPay: $("#supportProjectPay"),
+  supportProjectStatus: $("#supportProjectStatus"),
   offlineModal: $("#offlineModal"),
   offlineText: $("#offlineText"),
   offlineClose: $("#offlineClose"),
@@ -492,12 +493,22 @@ function bindSupportProjectActions() {
 
 function openSupportProjectModal() {
   if (!els.supportProjectModal) return;
+  setSupportStatus("");
   els.supportProjectModal.classList.remove("hidden");
 }
 
 function closeSupportProjectModal() {
   if (!els.supportProjectModal) return;
+  setSupportStatus("");
   els.supportProjectModal.classList.add("hidden");
+}
+
+
+function setSupportStatus(message = "", type = "") {
+  if (!els.supportProjectStatus) return;
+  els.supportProjectStatus.textContent = message;
+  els.supportProjectStatus.classList.toggle("error", type === "error");
+  els.supportProjectStatus.classList.toggle("success", type === "success");
 }
 
 function setSupportPayLoading(isLoading) {
@@ -554,51 +565,71 @@ async function paySupportProject() {
 
   const tg = window.Telegram?.WebApp;
   if (!isTelegramMiniAppReady()) {
-    showToast("Открой игру через Telegram Mini App, чтобы поддержать проект.");
+    const message = "Открой игру через Telegram Mini App, чтобы поддержать проект.";
+    setSupportStatus(message, "error");
+    showToast(message);
     return;
   }
 
   if (!tg?.openInvoice) {
-    showToast("Твой Telegram пока не поддерживает оплату invoice внутри Mini App.");
+    const message = "Этот Telegram не поддерживает открытие invoice внутри Mini App. Обнови Telegram и попробуй снова.";
+    setSupportStatus(message, "error");
+    showToast("Обнови Telegram и попробуй снова.");
     return;
   }
 
   supportProjectBusy = true;
   setSupportPayLoading(true);
+  setSupportStatus("Создаю счёт Telegram Stars...");
 
   try {
     const invoiceLink = await createSupportInvoiceLink();
 
-    tg.openInvoice(invoiceLink, (status) => {
+    setSupportStatus("Открываю окно оплаты Telegram...");
+
+    try {
+      tg.openInvoice(invoiceLink, (status) => {
+        supportProjectBusy = false;
+        setSupportPayLoading(false);
+
+        if (status === "paid") {
+          closeSupportProjectModal();
+          showToast("Спасибо за поддержку проекта ⭐");
+          try {
+            tg.HapticFeedback?.notificationOccurred?.("success");
+          } catch (_) {}
+          return;
+        }
+
+        if (status === "cancelled") {
+          setSupportStatus("Оплата отменена.");
+          showToast("Оплата отменена.");
+          return;
+        }
+
+        if (status === "failed") {
+          setSupportStatus("Оплата не прошла. Попробуй позже.", "error");
+          showToast("Оплата не прошла. Попробуй позже.");
+          return;
+        }
+
+        setSupportStatus("Оплата закрыта. Статус: " + String(status || "unknown"));
+        showToast("Окно оплаты закрыто.");
+      });
+    } catch (openError) {
       supportProjectBusy = false;
       setSupportPayLoading(false);
-
-      if (status === "paid") {
-        closeSupportProjectModal();
-        showToast("Спасибо за поддержку проекта ⭐");
-        try {
-          tg.HapticFeedback?.notificationOccurred?.("success");
-        } catch (_) {}
-        return;
-      }
-
-      if (status === "cancelled") {
-        showToast("Оплата отменена.");
-        return;
-      }
-
-      if (status === "failed") {
-        showToast("Оплата не прошла. Попробуй позже.");
-        return;
-      }
-
-      showToast("Оплата ожидает подтверждения Telegram.");
-    });
+      console.warn("Telegram openInvoice failed:", openError);
+      setSupportStatus("Telegram не смог открыть окно оплаты. Обнови Telegram и попробуй снова.", "error");
+      showToast("Не удалось открыть окно оплаты.");
+    }
   } catch (error) {
     supportProjectBusy = false;
     setSupportPayLoading(false);
     console.warn("Stars support payment failed:", error);
-    showToast(String(error?.message || error));
+    const message = String(error?.message || error);
+    setSupportStatus(message, "error");
+    showToast(message);
   }
 }
 

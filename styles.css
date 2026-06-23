@@ -1563,3 +1563,21 @@ h2 {
     font-size: 12px;
   }
 }
+
+
+.support-status {
+  min-height: 18px;
+  margin-top: 10px;
+  color: rgba(255, 255, 255, .72);
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.support-status.error {
+  color: #ffb6b6;
+}
+
+.support-status.success {
+  color: #b6ffd0;
+}

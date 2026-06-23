@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Raccoon Tap</title>
-  <link rel="stylesheet" href="styles.css?v=15" />
+  <link rel="stylesheet" href="styles.css?v=16" />
 </head>
 <body>
   <div class="app-shell">
@@ -377,8 +377,9 @@
         <span>100</span>
         <b>⭐</b>
       </div>
-      <p class="support-privacy-note">Оплата проходит через Telegram Stars внутри бота.</p>
+      <p class="support-privacy-note">Оплата проходит через Telegram Stars. Твой личный аккаунт автора игроку не показывается.</p>
       <button id="supportProjectPay" class="primary-btn support-pay-btn">Поддержать за 100 ⭐</button>
+      <div id="supportProjectStatus" class="support-status" aria-live="polite"></div>
       <button id="supportProjectClose" class="ghost-btn support-close-btn">Позже</button>
     </div>
   </div>
@@ -433,6 +434,6 @@
   </div>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="app.js?v=15"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>
