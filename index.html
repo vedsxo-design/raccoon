@@ -251,11 +251,71 @@
         </div>
 
         <div class="info-card leaderboard-note" id="leaderboardInfoValue">
-          Лидерборд считает прибыль в час на backend по уровням бизнесов и показывает 100 сильнейших игроков.
+          Лидерборд считает прибыль в час на backend по уровням бизнесов и показывает топ-100. В рейтинг попадают все игроки, даже с маленькой или нулевой прибылью.
         </div>
 
         <div class="leaderboard-list" id="leaderboardList">
           <div class="leaderboard-empty">Загружаю топ игроков...</div>
+        </div>
+      </section>
+
+
+      <section class="screen" id="screen-profile">
+        <div class="section-title">
+          <div>
+            <span class="label">Аккаунт игрока</span>
+            <h2>Профиль</h2>
+          </div>
+          <div class="pill">TG Sync</div>
+        </div>
+
+        <div class="profile-hero">
+          <div class="profile-avatar" id="profileAvatarValue">R</div>
+          <div>
+            <span class="label">Игрок</span>
+            <h3 id="profileNameValue">Raccoon Player</h3>
+            <p id="profileUsernameValue">Открой игру через Telegram Mini App</p>
+          </div>
+          <button id="refreshProfileBtn" class="buy-btn">Обновить</button>
+        </div>
+
+        <div class="profile-grid">
+          <div>
+            <span class="label">Баланс</span>
+            <b id="profileBalanceValue">0 RCT</b>
+          </div>
+          <div>
+            <span class="label">Прибыль в час</span>
+            <b id="profileProfitValue">0/час</b>
+          </div>
+          <div>
+            <span class="label">Место в рейтинге</span>
+            <b id="profileRankValue">—</b>
+          </div>
+          <div>
+            <span class="label">Telegram ID</span>
+            <b id="profileTelegramIdValue">—</b>
+          </div>
+          <div>
+            <span class="label">Приглашено</span>
+            <b id="profileInvitedValue">0</b>
+          </div>
+          <div>
+            <span class="label">Реф. бонусы</span>
+            <b id="profileRefBonusValue">0 RCT</b>
+          </div>
+          <div>
+            <span class="label">Всего заработано</span>
+            <b id="profileTotalEarnedValue">0 RCT</b>
+          </div>
+          <div>
+            <span class="label">Уровней бизнесов</span>
+            <b id="profileBusinessLevelsValue">0</b>
+          </div>
+        </div>
+
+        <div class="info-card profile-note" id="profileBackendValue">
+          Профиль синхронизируется с Supabase backend после запуска через Telegram Mini App.
         </div>
       </section>
 
@@ -290,6 +350,11 @@
       <button class="nav-btn" data-screen="leaderboard">
         <span class="nav-icon">★</span>
         <span>Лидеры</span>
+      </button>
+
+      <button class="nav-btn" data-screen="profile">
+        <span class="nav-icon">◉</span>
+        <span>Профиль</span>
       </button>
       <button class="nav-btn" data-screen="listing">
         <span class="nav-icon">◎</span>

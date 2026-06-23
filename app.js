@@ -250,7 +250,20 @@ const els = {
   leaderboardMyProfitValue: $("#leaderboardMyProfitValue"),
   leaderboardMyRankValue: $("#leaderboardMyRankValue"),
   leaderboardInfoValue: $("#leaderboardInfoValue"),
-  refreshLeaderboardBtn: $("#refreshLeaderboardBtn")
+  refreshLeaderboardBtn: $("#refreshLeaderboardBtn"),
+  profileAvatarValue: $("#profileAvatarValue"),
+  profileNameValue: $("#profileNameValue"),
+  profileUsernameValue: $("#profileUsernameValue"),
+  profileTelegramIdValue: $("#profileTelegramIdValue"),
+  profileBalanceValue: $("#profileBalanceValue"),
+  profileProfitValue: $("#profileProfitValue"),
+  profileRankValue: $("#profileRankValue"),
+  profileInvitedValue: $("#profileInvitedValue"),
+  profileRefBonusValue: $("#profileRefBonusValue"),
+  profileTotalEarnedValue: $("#profileTotalEarnedValue"),
+  profileBusinessLevelsValue: $("#profileBusinessLevelsValue"),
+  profileBackendValue: $("#profileBackendValue"),
+  refreshProfileBtn: $("#refreshProfileBtn")
 };
 
 init();
@@ -273,6 +286,7 @@ function init() {
   bindEnergyCapacityUpgrade();
   bindReferralActions();
   bindLeaderboardActions();
+  bindProfileActions();
   renderCategoryTabs();
   renderBoosts();
   renderAll();
@@ -527,6 +541,10 @@ function renderAll() {
   if ($("#screen-leaderboard")?.classList.contains("active")) {
     renderLeaderboard();
   }
+
+  if ($("#screen-profile")?.classList.contains("active")) {
+    renderProfile();
+  }
 }
 
 
@@ -649,6 +667,7 @@ async function syncTelegramPlayer() {
     };
     renderReferralsIfOpen();
     renderLeaderboardIfOpen();
+    renderProfileIfOpen();
     return;
   }
 
@@ -663,6 +682,7 @@ async function syncTelegramPlayer() {
   };
   renderReferralsIfOpen();
   renderLeaderboardIfOpen();
+  renderProfileIfOpen();
 
   try {
     const headers = {
@@ -681,7 +701,9 @@ async function syncTelegramPlayer() {
         initData,
         startParam,
         businessLevels: getSanitizedBusinessLevelsForBackend(),
-        totalEarned: Math.floor(Number(state.totalEarned || 0))
+        totalEarned: Math.floor(Number(state.totalEarned || 0)),
+        clientBalance: Math.floor(Number(state.coins || 0)),
+        knownServerBalance: Math.floor(Number(state.referrals?.serverBalance || 0))
       })
     });
 
@@ -706,6 +728,7 @@ async function syncTelegramPlayer() {
     saveState();
     renderReferralsIfOpen();
     renderLeaderboardIfOpen();
+    renderProfileIfOpen();
   }
 }
 
@@ -725,24 +748,24 @@ function applyBackendPlayerData(data) {
   state.referrals.invitedFriends = Number(data.invited_count || 0);
 
   const serverBalance = Math.max(0, Number(user.balance || 0));
-  const appliedBefore = Math.max(0, Number(state.referrals.serverBalanceApplied || 0));
-  const newReferralReward = Math.max(0, serverBalance - appliedBefore);
+  const previousLocalBalance = Math.max(0, Number(state.coins || 0));
+  const balanceDelta = serverBalance - previousLocalBalance;
 
   state.referrals.serverBalance = serverBalance;
-  state.referrals.rewardsEarned = serverBalance;
+  state.referrals.serverBalanceApplied = serverBalance;
+  state.referrals.rewardsEarned = Math.max(0, Number(data.referral_rewards_total ?? state.referrals.rewardsEarned ?? 0));
+  state.coins = serverBalance;
+  state.totalEarned = Math.max(
+    Number(state.totalEarned || 0),
+    Number(user.total_earned || 0),
+    serverBalance
+  );
 
-  if (newReferralReward > 0) {
-    state.coins += newReferralReward;
-    state.totalEarned += newReferralReward;
-    state.referrals.serverBalanceApplied = serverBalance;
-
+  if (balanceDelta > 0) {
     setTimeout(() => {
-      showToast(`Реферальный бонус: +${formatNumber(newReferralReward)} RCT.`);
-      spawnFloatingText(`+${formatNumber(newReferralReward)}`, window.innerWidth / 2, 160);
+      showToast(`Баланс синхронизирован: +${formatNumber(balanceDelta)} RCT.`);
+      spawnFloatingText(`+${formatNumber(balanceDelta)}`, window.innerWidth / 2, 160);
     }, 300);
-  } else if (serverBalance < appliedBefore) {
-    // Если в базе вручную обнулили бонусы, не отнимаем монеты у игрока, только синхронизируем счетчик.
-    state.referrals.serverBalanceApplied = serverBalance;
   }
 
   if (data.referral_reward_given) {
@@ -801,6 +824,77 @@ function renderLeaderboardIfOpen() {
   if ($("#screen-leaderboard")?.classList.contains("active")) {
     renderLeaderboard();
   }
+
+  if ($("#screen-profile")?.classList.contains("active")) {
+    renderProfile();
+  }
+}
+
+function bindProfileActions() {
+  els.refreshProfileBtn?.addEventListener("click", async () => {
+    await syncTelegramPlayer();
+    renderProfile();
+  });
+}
+
+function renderProfileIfOpen() {
+  if ($("#screen-profile")?.classList.contains("active")) {
+    renderProfile();
+  }
+}
+
+function renderProfile() {
+  const telegramUser = getTelegramUser();
+  const telegramId = state.referrals?.telegramId || telegramUser?.id || "";
+  const username = telegramUser?.username || "";
+  const firstName = telegramUser?.first_name || "";
+  const displayName = firstName || (username ? `@${username}` : "Raccoon Player");
+  const initialsSource = firstName || username || "R";
+  const profileInitial = String(initialsSource).trim().slice(0, 1).toUpperCase() || "R";
+
+  if (els.profileAvatarValue) els.profileAvatarValue.textContent = profileInitial;
+  if (els.profileNameValue) els.profileNameValue.textContent = displayName;
+  if (els.profileUsernameValue) {
+    els.profileUsernameValue.textContent = username
+      ? `@${username}`
+      : state.referrals?.backendStatus === "not_telegram"
+        ? "Открой игру через Telegram Mini App"
+        : "Telegram username не указан";
+  }
+  if (els.profileTelegramIdValue) els.profileTelegramIdValue.textContent = telegramId ? String(telegramId) : "—";
+  if (els.profileBalanceValue) els.profileBalanceValue.textContent = `${formatNumber(state.coins || 0)} RCT`;
+  if (els.profileProfitValue) els.profileProfitValue.textContent = `${formatNumber(state.leaderboard?.myProfitPerHour || getTotalProfitPerHour())}/час`;
+  if (els.profileRankValue) els.profileRankValue.textContent = state.leaderboard?.myRank ? `#${state.leaderboard.myRank}` : "—";
+  if (els.profileInvitedValue) els.profileInvitedValue.textContent = formatNumber(state.referrals?.invitedFriends || 0);
+  if (els.profileRefBonusValue) els.profileRefBonusValue.textContent = `${formatNumber(state.referrals?.rewardsEarned || 0)} RCT`;
+  if (els.profileTotalEarnedValue) els.profileTotalEarnedValue.textContent = `${formatNumber(state.totalEarned || 0)} RCT`;
+  if (els.profileBusinessLevelsValue) els.profileBusinessLevelsValue.textContent = formatNumber(getOwnedLevels());
+  if (els.profileBackendValue) els.profileBackendValue.textContent = getProfileStatusText();
+}
+
+function getProfileStatusText() {
+  const status = state.referrals?.backendStatus;
+
+  if (status === "connected") {
+    const syncedAt = state.referrals.lastSyncAt
+      ? new Date(state.referrals.lastSyncAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+      : "только что";
+    return `Профиль подключён к Supabase. Серверный баланс: ${formatNumber(state.referrals.serverBalance || 0)} RCT. Последняя синхронизация: ${syncedAt}.`;
+  }
+
+  if (status === "syncing") {
+    return "Синхронизирую профиль с Supabase backend...";
+  }
+
+  if (status === "not_telegram") {
+    return "Профиль появится после запуска игры внутри Telegram Mini App.";
+  }
+
+  if (status === "error") {
+    return `Профиль не синхронизирован: ${state.referrals.backendError || "неизвестная ошибка"}.`;
+  }
+
+  return "Профиль ожидает подключения к Telegram и Supabase backend.";
 }
 
 function renderLeaderboard() {
@@ -819,7 +913,7 @@ function renderLeaderboard() {
     if (state.leaderboard.status === "connected" && state.leaderboard.myRank) {
       els.leaderboardMyRankValue.textContent = `Твоё место: #${state.leaderboard.myRank}.`;
     } else if (state.leaderboard.status === "connected") {
-      els.leaderboardMyRankValue.textContent = "Пока ты не в топ-100. Прокачай бизнесы и обнови рейтинг.";
+      els.leaderboardMyRankValue.textContent = "Твой ранг пока не попал в топ-100, но игрок уже участвует в рейтинге.";
     } else if (state.leaderboard.status === "error") {
       els.leaderboardMyRankValue.textContent = "Лидерборд пока не загрузился.";
     } else {
@@ -879,7 +973,7 @@ function getLeaderboardStatusText() {
     const syncedAt = state.leaderboard.lastSyncAt
       ? new Date(state.leaderboard.lastSyncAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
       : "только что";
-    return `Топ-100 обновлён. Рейтинг сортируется по текущей прибыли в час. Последняя синхронизация: ${syncedAt}.`;
+    return `Топ-100 обновлён. В рейтинг попадают все игроки, даже с нулевой прибылью. Последняя синхронизация: ${syncedAt}.`;
   }
 
   if (status === "syncing") {
