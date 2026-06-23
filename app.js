@@ -680,7 +680,7 @@ async function syncTelegramPlayer() {
       body: JSON.stringify({
         initData,
         startParam,
-        profitPerHour: getTotalProfitPerHour(),
+        businessLevels: getSanitizedBusinessLevelsForBackend(),
         totalEarned: Math.floor(Number(state.totalEarned || 0))
       })
     });
@@ -787,9 +787,11 @@ function applyBackendLeaderboardData(data) {
   const items = Array.isArray(data.leaderboard) ? data.leaderboard : [];
   const myRank = data.my_leaderboard_rank ?? null;
 
+  const serverProfitPerHour = Math.max(0, Number(data.user?.profit_per_hour ?? 0));
+
   state.leaderboard.items = items;
   state.leaderboard.myRank = myRank;
-  state.leaderboard.myProfitPerHour = getTotalProfitPerHour();
+  state.leaderboard.myProfitPerHour = serverProfitPerHour || getTotalProfitPerHour();
   state.leaderboard.status = "connected";
   state.leaderboard.error = "";
   state.leaderboard.lastSyncAt = Date.now();
@@ -804,7 +806,11 @@ function renderLeaderboardIfOpen() {
 function renderLeaderboard() {
   ensureLeaderboardState();
 
-  const profitPerHour = getTotalProfitPerHour();
+  const serverProfit = Math.max(0, Number(state.leaderboard?.myProfitPerHour || 0));
+  const profitPerHour = state.leaderboard.status === "connected" && serverProfit > 0
+    ? serverProfit
+    : getTotalProfitPerHour();
+
   if (els.leaderboardMyProfitValue) {
     els.leaderboardMyProfitValue.textContent = `${formatNumber(profitPerHour)}/час`;
   }
@@ -1300,6 +1306,21 @@ function getCategoryProfitPerHour(categoryId) {
 
 function getBusinessLevel(businessId) {
   return Math.max(0, Math.min(CONFIG.businessMaxLevel, Number(state.businessLevels[businessId] || 0)));
+}
+
+function getSanitizedBusinessLevelsForBackend() {
+  const payload = {};
+
+  categories.forEach((category) => {
+    category.businesses.forEach((business) => {
+      const level = getBusinessLevel(business.id);
+      if (level > 0) {
+        payload[business.id] = level;
+      }
+    });
+  });
+
+  return payload;
 }
 
 function getBusinessProfitPerHour(business, level) {
