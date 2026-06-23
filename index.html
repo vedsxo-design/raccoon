@@ -231,6 +231,34 @@
         </div>
       </section>
 
+
+      <section class="screen" id="screen-leaderboard">
+        <div class="section-title">
+          <div>
+            <span class="label">Прибыль в час</span>
+            <h2>Лидеры</h2>
+          </div>
+          <div class="pill">Топ-100</div>
+        </div>
+
+        <div class="leaderboard-hero">
+          <div>
+            <span class="label">Твой показатель</span>
+            <h3 id="leaderboardMyProfitValue">0/час</h3>
+            <p id="leaderboardMyRankValue">Открой игру через Telegram, чтобы попасть в таблицу.</p>
+          </div>
+          <button id="refreshLeaderboardBtn" class="buy-btn">Обновить</button>
+        </div>
+
+        <div class="info-card leaderboard-note" id="leaderboardInfoValue">
+          Лидерборд считает текущую прибыль в час и показывает 100 сильнейших игроков.
+        </div>
+
+        <div class="leaderboard-list" id="leaderboardList">
+          <div class="leaderboard-empty">Загружаю топ игроков...</div>
+        </div>
+      </section>
+
       <section class="screen" id="screen-listing">
         <div class="listing-card">
           <div class="listing-orbit">
@@ -259,6 +287,10 @@
       <button class="nav-btn" data-screen="referrals">
         <span class="nav-icon">♟</span>
         <span>Друзья</span>
+      </button>
+      <button class="nav-btn" data-screen="leaderboard">
+        <span class="nav-icon">★</span>
+        <span>Лидеры</span>
       </button>
       <button class="nav-btn" data-screen="listing">
         <span class="nav-icon">◎</span>

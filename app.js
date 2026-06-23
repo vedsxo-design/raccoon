@@ -186,6 +186,14 @@ const defaultState = {
     serverBalance: 0,
     serverBalanceApplied: 0,
     lastSyncAt: 0
+  },
+  leaderboard: {
+    items: [],
+    myRank: null,
+    myProfitPerHour: 0,
+    status: "idle",
+    error: "",
+    lastSyncAt: 0
   }
 };
 
@@ -237,7 +245,12 @@ const els = {
   shareReferralBtn: $("#shareReferralBtn"),
   incomingReferralCard: $("#incomingReferralCard"),
   incomingReferralValue: $("#incomingReferralValue"),
-  referralInfoValue: $("#referralInfoValue")
+  referralInfoValue: $("#referralInfoValue"),
+  leaderboardList: $("#leaderboardList"),
+  leaderboardMyProfitValue: $("#leaderboardMyProfitValue"),
+  leaderboardMyRankValue: $("#leaderboardMyRankValue"),
+  leaderboardInfoValue: $("#leaderboardInfoValue"),
+  refreshLeaderboardBtn: $("#refreshLeaderboardBtn")
 };
 
 init();
@@ -245,6 +258,7 @@ init();
 function init() {
   initTelegramApp();
   ensureReferralState();
+  ensureLeaderboardState();
   captureIncomingReferral();
 
   els.maxEnergyValue.textContent = formatNumber(getMaxEnergy());
@@ -258,6 +272,7 @@ function init() {
   bindReset();
   bindEnergyCapacityUpgrade();
   bindReferralActions();
+  bindLeaderboardActions();
   renderCategoryTabs();
   renderBoosts();
   renderAll();
@@ -265,6 +280,7 @@ function init() {
 
   setInterval(gameLoop, 1000);
   setInterval(saveState, 5000);
+  setInterval(syncTelegramPlayer, 60 * 1000);
   window.addEventListener("beforeunload", () => {
     applyElapsedProgress(false);
     saveState();
@@ -290,6 +306,10 @@ function loadState() {
       referrals: {
         ...structuredClone(defaultState.referrals),
         ...(parsed.referrals || {})
+      },
+      leaderboard: {
+        ...structuredClone(defaultState.leaderboard),
+        ...(parsed.leaderboard || {})
       }
     };
   } catch (error) {
@@ -397,6 +417,7 @@ function bindReset() {
     if (!ok) return;
 
     const preservedReferralSync = structuredClone(state.referrals || {});
+    const preservedLeaderboardSync = structuredClone(state.leaderboard || {});
 
     localStorage.removeItem(CONFIG.saveKey);
     state = structuredClone(defaultState);
@@ -411,6 +432,14 @@ function bindReset() {
       serverBalance: Number(preservedReferralSync.serverBalance || 0),
       serverBalanceApplied: Number(preservedReferralSync.serverBalanceApplied || 0),
       lastSyncAt: Number(preservedReferralSync.lastSyncAt || 0)
+    };
+    state.leaderboard = {
+      ...structuredClone(defaultState.leaderboard),
+      items: Array.isArray(preservedLeaderboardSync.items) ? preservedLeaderboardSync.items : [],
+      myRank: preservedLeaderboardSync.myRank || null,
+      myProfitPerHour: Number(preservedLeaderboardSync.myProfitPerHour || 0),
+      status: preservedLeaderboardSync.status || "idle",
+      lastSyncAt: Number(preservedLeaderboardSync.lastSyncAt || 0)
     };
     activeCategoryId = "markets";
     saveState();
@@ -493,6 +522,10 @@ function renderAll() {
 
   if ($("#screen-referrals").classList.contains("active")) {
     renderReferrals();
+  }
+
+  if ($("#screen-leaderboard")?.classList.contains("active")) {
+    renderLeaderboard();
   }
 }
 
@@ -608,14 +641,28 @@ async function syncTelegramPlayer() {
     state.referrals.backendEnabled = false;
     state.referrals.backendStatus = "not_telegram";
     state.referrals.backendError = "";
+    state.leaderboard = {
+      ...structuredClone(defaultState.leaderboard),
+      ...(state.leaderboard || {}),
+      status: "not_telegram",
+      error: ""
+    };
     renderReferralsIfOpen();
+    renderLeaderboardIfOpen();
     return;
   }
 
   const startParam = toTelegramStartParam(getIncomingReferralParam());
   state.referrals.backendStatus = "syncing";
   state.referrals.backendError = "";
+  state.leaderboard = {
+    ...structuredClone(defaultState.leaderboard),
+    ...(state.leaderboard || {}),
+    status: "syncing",
+    error: ""
+  };
   renderReferralsIfOpen();
+  renderLeaderboardIfOpen();
 
   try {
     const headers = {
@@ -632,7 +679,9 @@ async function syncTelegramPlayer() {
       headers,
       body: JSON.stringify({
         initData,
-        startParam
+        startParam,
+        profitPerHour: getTotalProfitPerHour(),
+        totalEarned: Math.floor(Number(state.totalEarned || 0))
       })
     });
 
@@ -648,8 +697,15 @@ async function syncTelegramPlayer() {
     state.referrals.backendEnabled = false;
     state.referrals.backendStatus = "error";
     state.referrals.backendError = String(error?.message || error);
+    state.leaderboard = {
+      ...structuredClone(defaultState.leaderboard),
+      ...(state.leaderboard || {}),
+      status: "error",
+      error: String(error?.message || error)
+    };
     saveState();
     renderReferralsIfOpen();
+    renderLeaderboardIfOpen();
   }
 }
 
@@ -695,6 +751,8 @@ function applyBackendPlayerData(data) {
     }, 450);
   }
 
+  applyBackendLeaderboardData(data);
+
   saveState();
   renderAll();
 }
@@ -703,6 +761,139 @@ function renderReferralsIfOpen() {
   if ($("#screen-referrals")?.classList.contains("active")) {
     renderReferrals();
   }
+}
+
+function ensureLeaderboardState() {
+  state.leaderboard = {
+    ...structuredClone(defaultState.leaderboard),
+    ...(state.leaderboard || {})
+  };
+
+  if (!Array.isArray(state.leaderboard.items)) {
+    state.leaderboard.items = [];
+  }
+}
+
+function bindLeaderboardActions() {
+  els.refreshLeaderboardBtn?.addEventListener("click", async () => {
+    await syncTelegramPlayer();
+    renderLeaderboard();
+  });
+}
+
+function applyBackendLeaderboardData(data) {
+  ensureLeaderboardState();
+
+  const items = Array.isArray(data.leaderboard) ? data.leaderboard : [];
+  const myRank = data.my_leaderboard_rank ?? null;
+
+  state.leaderboard.items = items;
+  state.leaderboard.myRank = myRank;
+  state.leaderboard.myProfitPerHour = getTotalProfitPerHour();
+  state.leaderboard.status = "connected";
+  state.leaderboard.error = "";
+  state.leaderboard.lastSyncAt = Date.now();
+}
+
+function renderLeaderboardIfOpen() {
+  if ($("#screen-leaderboard")?.classList.contains("active")) {
+    renderLeaderboard();
+  }
+}
+
+function renderLeaderboard() {
+  ensureLeaderboardState();
+
+  const profitPerHour = getTotalProfitPerHour();
+  if (els.leaderboardMyProfitValue) {
+    els.leaderboardMyProfitValue.textContent = `${formatNumber(profitPerHour)}/час`;
+  }
+
+  if (els.leaderboardMyRankValue) {
+    if (state.leaderboard.status === "connected" && state.leaderboard.myRank) {
+      els.leaderboardMyRankValue.textContent = `Твоё место: #${state.leaderboard.myRank}.`;
+    } else if (state.leaderboard.status === "connected") {
+      els.leaderboardMyRankValue.textContent = "Пока ты не в топ-100. Прокачай бизнесы и обнови рейтинг.";
+    } else if (state.leaderboard.status === "error") {
+      els.leaderboardMyRankValue.textContent = "Лидерборд пока не загрузился.";
+    } else {
+      els.leaderboardMyRankValue.textContent = "Рейтинг появится после синхронизации через Telegram.";
+    }
+  }
+
+  if (els.leaderboardInfoValue) {
+    els.leaderboardInfoValue.textContent = getLeaderboardStatusText();
+  }
+
+  if (!els.leaderboardList) return;
+
+  const rows = Array.isArray(state.leaderboard.items) ? state.leaderboard.items : [];
+  if (!rows.length) {
+    els.leaderboardList.innerHTML = `<div class="leaderboard-empty">${state.leaderboard.status === "syncing" ? "Загружаю топ игроков..." : "Пока нет игроков в рейтинге."}</div>`;
+    return;
+  }
+
+  const currentTelegramId = String(state.referrals?.telegramId || "");
+  els.leaderboardList.innerHTML = rows.map((item, index) => {
+    const rank = Number(item.rank || index + 1);
+    const telegramId = String(item.telegram_id || "");
+    const name = escapeHtml(getLeaderboardDisplayName(item));
+    const profit = formatNumber(item.profit_per_hour || 0);
+    const earned = formatNumber(item.total_earned || 0);
+    const isMe = currentTelegramId && telegramId === currentTelegramId;
+    const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
+
+    return `
+      <div class="leaderboard-row${isMe ? " is-me" : ""}">
+        <div class="leaderboard-rank">${medal}</div>
+        <div class="leaderboard-player">
+          <b>${name}</b>
+          <span>${earned} RCT всего</span>
+        </div>
+        <div class="leaderboard-profit">${profit}<span>/час</span></div>
+      </div>`;
+  }).join("");
+}
+
+function getLeaderboardDisplayName(item) {
+  const username = String(item.username || "").trim();
+  if (username) return `@${username}`;
+
+  const firstName = String(item.first_name || "").trim();
+  if (firstName) return firstName;
+
+  const telegramId = String(item.telegram_id || "");
+  return telegramId ? `Игрок ${telegramId.slice(-4)}` : "Unknown Raccoon";
+}
+
+function getLeaderboardStatusText() {
+  const status = state.leaderboard?.status;
+
+  if (status === "connected") {
+    const syncedAt = state.leaderboard.lastSyncAt
+      ? new Date(state.leaderboard.lastSyncAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+      : "только что";
+    return `Топ-100 обновлён. Рейтинг сортируется по текущей прибыли в час. Последняя синхронизация: ${syncedAt}.`;
+  }
+
+  if (status === "syncing") {
+    return "Обновляю лидерборд через Supabase...";
+  }
+
+  if (status === "error") {
+    return `Лидерборд не загрузился: ${state.leaderboard.error || "неизвестная ошибка"}. Проверь код register-player и SQL-таблицы.`;
+  }
+
+  return "Открой игру через Telegram Mini App, чтобы отправить прибыль в час и попасть в рейтинг.";
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function bindReferralActions() {
