@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Raccoon Tap</title>
-  <link rel="stylesheet" href="styles.css?v=14" />
+  <link rel="stylesheet" href="styles.css?v=15" />
 </head>
 <body>
   <div class="app-shell">
@@ -25,7 +25,10 @@
           <span>тапай, строй, бусти</span>
         </div>
       </div>
-      <button id="resetBtn" class="ghost-btn" title="Сбросить прогресс">Сброс</button>
+      <div class="topbar-actions">
+        <button id="supportProjectBtn" class="support-project-btn" title="Поддержать проект">Поддержать Проект ⭐</button>
+        <button id="resetBtn" class="ghost-btn" title="Сбросить прогресс">Сброс</button>
+      </div>
     </header>
 
     <main>
@@ -364,6 +367,22 @@
 
     <div id="floatingLayer" class="floating-layer"></div>
   
+  
+  <div class="modal hidden" id="supportProjectModal" role="dialog" aria-modal="true" aria-labelledby="supportProjectTitle">
+    <div class="modal-card support-modal-card">
+      <div class="support-star-emblem" aria-hidden="true">⭐</div>
+      <h3 id="supportProjectTitle">Поддержать Проект</h3>
+      <p>Добровольная поддержка развития Raccoon Tap.</p>
+      <div class="support-stars-price">
+        <span>100</span>
+        <b>⭐</b>
+      </div>
+      <p class="support-privacy-note">Оплата проходит через Telegram Stars внутри бота.</p>
+      <button id="supportProjectPay" class="primary-btn support-pay-btn">Поддержать за 100 ⭐</button>
+      <button id="supportProjectClose" class="ghost-btn support-close-btn">Позже</button>
+    </div>
+  </div>
+
   <div class="modal hidden" id="betaModal" role="dialog" aria-modal="true" aria-labelledby="betaModalTitle">
     <div class="modal-backdrop"></div>
     <div class="modal-card beta-modal-card">
@@ -414,6 +433,6 @@
   </div>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>

@@ -1445,3 +1445,121 @@ h2 {
   z-index: 1;
   filter: drop-shadow(0 8px 10px rgba(0, 0, 0, .35));
 }
+
+
+/* v15 Telegram Stars support button */
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.support-project-btn {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 15px;
+  cursor: pointer;
+  color: #271a06;
+  font-weight: 950;
+  white-space: nowrap;
+  background: linear-gradient(145deg, #ffe7a3, #f0a735);
+  box-shadow: 0 12px 26px rgba(247, 185, 85, .24);
+}
+
+.support-project-btn:active {
+  transform: translateY(1px);
+}
+
+.support-modal-card {
+  width: min(92vw, 390px);
+  padding: 24px;
+  border-color: rgba(247, 185, 85, .48);
+  background:
+    radial-gradient(circle at 50% -16%, rgba(247, 185, 85, .22), transparent 42%),
+    linear-gradient(145deg, rgba(22, 34, 54, .98), rgba(11, 17, 28, .98));
+}
+
+.support-star-emblem {
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 12px;
+  font-size: 42px;
+  border-radius: 24px;
+  background: radial-gradient(circle at 30% 20%, rgba(255, 255, 255, .55), rgba(247, 185, 85, .92));
+  box-shadow: 0 18px 34px rgba(247, 185, 85, .25);
+}
+
+.support-modal-card h3 {
+  margin: 0 0 8px;
+  font-size: 28px;
+  color: #ffe7a3;
+}
+
+.support-stars-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 62px;
+  margin: 4px auto 14px;
+  padding: 0 24px;
+  border-radius: 22px;
+  color: #271a06;
+  background: linear-gradient(145deg, #ffe7a3, #f0a735);
+  box-shadow: 0 18px 38px rgba(247, 185, 85, .24);
+}
+
+.support-stars-price span {
+  font-size: 34px;
+  line-height: 1;
+  font-weight: 1000;
+  letter-spacing: -.8px;
+}
+
+.support-stars-price b {
+  font-size: 27px;
+}
+
+.support-privacy-note {
+  font-size: 13px;
+  opacity: .88;
+}
+
+.support-pay-btn {
+  min-height: 50px;
+  margin-top: 6px;
+  font-size: 16px;
+}
+
+.support-close-btn {
+  width: 100%;
+  margin-top: 10px;
+  color: var(--muted);
+}
+
+.support-pay-btn.loading,
+.support-pay-btn:disabled {
+  cursor: wait;
+  opacity: .74;
+}
+
+@media (max-width: 460px) {
+  .topbar {
+    align-items: flex-start;
+  }
+
+  .topbar-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .support-project-btn,
+  .topbar-actions .ghost-btn {
+    min-height: 34px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+}
