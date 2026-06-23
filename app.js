@@ -1020,7 +1020,20 @@ function applyBackendPlayerData(data) {
     serverBalance
   );
 
-  if (balanceDelta > 0) {
+  const serverAfkReward = Math.max(0, Number(user.last_server_afk_reward || 0));
+  const serverAfkSeconds = Math.max(0, Number(user.last_server_afk_seconds || 0));
+
+  if (serverAfkReward > 0 && serverAfkSeconds > 15) {
+    setTimeout(() => {
+      const elapsedText = formatElapsedShort(serverAfkSeconds);
+      showToast(`AFK-доход: +${formatNumber(serverAfkReward)} RCT за ${elapsedText}.`);
+      if (els.offlineText && els.offlineModal) {
+        els.offlineText.textContent = `Пока тебя не было ${elapsedText}, backend начислил ${formatNumber(serverAfkReward)} RCT. Расчёт шёл от серверной прибыли ${formatNumber(user.profit_per_hour || 0)}/час.`;
+        els.offlineModal.classList.remove("hidden");
+      }
+      spawnFloatingText(`+${formatNumber(serverAfkReward)}`, window.innerWidth / 2, 160);
+    }, 300);
+  } else if (balanceDelta > 0) {
     setTimeout(() => {
       showToast(`Баланс синхронизирован: +${formatNumber(balanceDelta)} RCT.`);
       spawnFloatingText(`+${formatNumber(balanceDelta)}`, window.innerWidth / 2, 160);
