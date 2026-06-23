@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v19-passive-income-fix",
+  appVersion: "v21-server-afk-modal-fix",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -210,6 +210,7 @@ let lastRenderSecond = 0;
 let backendActionBusy = false;
 let lastManualSyncAt = 0;
 let betaNoticePending = false;
+let pendingAfkModalFromBackground = false;
 let supportProjectBusy = false;
 
 const $ = (selector) => document.querySelector(selector);
@@ -337,10 +338,17 @@ function init() {
       return;
     }
 
-    applyElapsedProgress(true);
+    const awaySeconds = Math.max(0, Math.floor((Date.now() - Number(state.lastTick || Date.now())) / 1000));
+
+    if (awaySeconds > 60) {
+      applyElapsedProgress(true);
+    } else {
+      applyElapsedProgress(false);
+      syncTelegramPlayer({ force: true });
+    }
+
     saveState();
     renderAll();
-    syncTelegramPlayer({ force: true });
   });
 }
 
@@ -403,39 +411,27 @@ function applyElapsedProgress(showOffline) {
   }
 
   const elapsedSeconds = Math.min(elapsedSecondsRaw, CONFIG.maxOfflineSeconds);
-  const profitPerHour = getPassiveProfitPerHour();
 
-  // Важно: начисляем только целые RCT и сразу сохраняем lastTick.
-  // Это защищает от повторного начисления одного и того же AFK-времени,
-  // если Telegram/браузер выгрузил приложение до обычного автосохранения.
-  const passiveEarned = Math.floor((profitPerHour * elapsedSeconds) / 3600);
-
-  if (passiveEarned > 0) {
-    state.coins = Math.max(0, Number(state.coins || 0)) + passiveEarned;
-    state.totalEarned = Math.max(0, Number(state.totalEarned || 0)) + passiveEarned;
-    state.lastPassiveEarned = passiveEarned;
-  } else {
-    state.lastPassiveEarned = 0;
-  }
-
+  // v21: AFK/passive RCT is calculated only on backend.
+  // The client may only restore energy locally for smoother UI.
   state.energy = Math.min(
     getMaxEnergy(),
     (state.energy || 0) + CONFIG.energyRegenPerSecond * elapsedSeconds
   );
 
   state.lastTick = now;
+  state.lastPassiveEarned = 0;
   cleanExpiredBoosts();
 
-  // Сохраняем сразу, а не ждём 5 секунд.
-  // Иначе можно было открыть/закрыть приложение и получить AFK-доход повторно.
-  if (passiveEarned > 0 || elapsedSecondsRaw > 15) {
+  if (elapsedSecondsRaw > 15) {
     saveState();
   }
 
-  if (showOffline && elapsedSecondsRaw > 15 && passiveEarned >= 1) {
-    const elapsedText = formatElapsedShort(elapsedSeconds);
-    els.offlineText.textContent = `Пока тебя не было ${elapsedText}, бизнесы принесли ${formatNumber(passiveEarned)} RCT. Расчёт шёл от прибыли ${formatNumber(profitPerHour)}/час.`;
-    els.offlineModal.classList.remove("hidden");
+  if (showOffline && elapsedSecondsRaw > 15) {
+    // Show AFK modal only after a real return from background/offline.
+    // Regular 30-second syncs must not open this modal.
+    pendingAfkModalFromBackground = true;
+    syncTelegramPlayer({ force: true, showServerAfk: true });
   }
 }
 
@@ -974,14 +970,14 @@ async function syncTelegramPlayer(options = {}) {
 
   try {
     const data = await callGameBackend({ action: "sync" });
-    applyBackendPlayerData(data);
+    applyBackendPlayerData(data, options);
   } catch (error) {
     console.warn("Backend sync failed:", error);
     setBackendError(error);
   }
 }
 
-function applyBackendPlayerData(data) {
+function applyBackendPlayerData(data, options = {}) {
   const user = data.user || {};
   const backendReferralCode = String(user.referral_code || "").trim();
   const backendTelegramId = user.telegram_id ? String(user.telegram_id) : "";
@@ -1022,8 +1018,15 @@ function applyBackendPlayerData(data) {
 
   const serverAfkReward = Math.max(0, Number(user.last_server_afk_reward || 0));
   const serverAfkSeconds = Math.max(0, Number(user.last_server_afk_seconds || 0));
+  const shouldShowAfkModal =
+    Boolean(options.showServerAfk) &&
+    pendingAfkModalFromBackground &&
+    serverAfkReward > 0 &&
+    serverAfkSeconds > 60;
 
-  if (serverAfkReward > 0 && serverAfkSeconds > 15) {
+  if (shouldShowAfkModal) {
+    pendingAfkModalFromBackground = false;
+
     setTimeout(() => {
       const elapsedText = formatElapsedShort(serverAfkSeconds);
       showToast(`AFK-доход: +${formatNumber(serverAfkReward)} RCT за ${elapsedText}.`);
@@ -1033,11 +1036,19 @@ function applyBackendPlayerData(data) {
       }
       spawnFloatingText(`+${formatNumber(serverAfkReward)}`, window.innerWidth / 2, 160);
     }, 300);
-  } else if (balanceDelta > 0) {
-    setTimeout(() => {
-      showToast(`Баланс синхронизирован: +${formatNumber(balanceDelta)} RCT.`);
-      spawnFloatingText(`+${formatNumber(balanceDelta)}`, window.innerWidth / 2, 160);
-    }, 300);
+  } else {
+    // Regular sync while the player is in the game can still credit passive income,
+    // but it must not open the AFK modal every 30 seconds.
+    if (!options.showServerAfk) {
+      pendingAfkModalFromBackground = false;
+    }
+
+    if (balanceDelta > 0 && balanceDelta >= 1000) {
+      setTimeout(() => {
+        showToast(`Баланс обновлён: +${formatNumber(balanceDelta)} RCT.`);
+        spawnFloatingText(`+${formatNumber(balanceDelta)}`, window.innerWidth / 2, 160);
+      }, 300);
+    }
   }
 
   if (data.referral_reward_given) {
@@ -1633,7 +1644,7 @@ async function buyBusinessLevel(businessId) {
       businessId
     });
 
-    applyBackendPlayerData(data);
+    applyBackendPlayerData(data, options);
 
     const purchase = data.purchase || {};
     const nextLevel = Number(purchase.level || getBusinessLevel(businessId));
