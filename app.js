@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v24-polish-stability",
+  appVersion: "v25-server-taps-energy",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -216,6 +216,9 @@ let pendingAfkMeasuredSeconds = 0;
 let firstBackendRegistrationDone = false;
 let firstBackendRegistrationPromise = null;
 let supportProjectBusy = false;
+let pendingServerTaps = 0;
+let tapBatchBusy = false;
+let tapFlushTimer = null;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -728,6 +731,61 @@ function hapticTap(style = "light") {
   } catch (_) {}
 }
 
+
+function queueServerTap(count = 1) {
+  pendingServerTaps += Math.max(0, Math.floor(Number(count) || 0));
+
+  if (pendingServerTaps >= 20) {
+    flushServerTaps({ silent: true });
+    return;
+  }
+
+  if (!tapFlushTimer) {
+    tapFlushTimer = setTimeout(() => {
+      tapFlushTimer = null;
+      flushServerTaps({ silent: true });
+    }, 1200);
+  }
+}
+
+async function flushServerTaps(options = {}) {
+  if (tapBatchBusy || pendingServerTaps <= 0 || !isTelegramMiniAppReady()) return false;
+
+  const tapsToSend = Math.min(240, pendingServerTaps);
+  tapBatchBusy = true;
+
+  try {
+    await flushServerTaps({ silent: true });
+
+    const data = await callGameBackend({
+      action: "tap_batch",
+      taps: tapsToSend,
+    });
+
+    const accepted = Math.max(0, Number(data.tap?.accepted || 0));
+    const requested = Math.max(0, Number(data.tap?.requested || tapsToSend));
+
+    // If server accepted fewer taps than requested, server state is source of truth,
+    // so we drop that batch and let UI be corrected from backend response.
+    pendingServerTaps = Math.max(0, pendingServerTaps - requested);
+    applyBackendPlayerData(data, { silent: Boolean(options.silent) });
+
+    if (!options.silent && accepted > 0) {
+      showToast(`Тапы сохранены: +${formatNumber(data.tap?.reward || 0)} RCT.`);
+    }
+
+    return true;
+  } catch (error) {
+    console.warn("Tap batch sync failed:", error);
+    if (!options.silent) showToast(String(error?.message || error));
+    setBackendError(error);
+    renderServerStatusBanner();
+    return false;
+  } finally {
+    tapBatchBusy = false;
+  }
+}
+
 async function performTap(event) {
   applyElapsedProgress(false);
 
@@ -755,6 +813,7 @@ async function performTap(event) {
   state.totalEarned += tapPower;
   state.totalTaps = Number(state.totalTaps || 0) + 1;
   state.energy = Math.max(0, state.energy - 1);
+  queueServerTap(1);
 
   els.tapZone.classList.add("pressed");
   setTimeout(() => els.tapZone.classList.remove("pressed"), 90);
@@ -1123,6 +1182,10 @@ async function syncTelegramPlayer(options = {}) {
   }
   lastManualSyncAt = now;
 
+  if (pendingServerTaps > 0 && !options.skipTapFlush) {
+    await flushServerTaps({ silent: true });
+  }
+
   if (!options.silent) {
     state.referrals.backendStatus = "syncing";
     state.referrals.backendError = "";
@@ -1140,7 +1203,7 @@ async function syncTelegramPlayer(options = {}) {
 
   try {
     const data = await callGameBackend({ action: "sync" });
-    applyBackendPlayerData(data, { silent: true });
+    applyBackendPlayerData(data, options);
   } catch (error) {
     console.warn("Backend sync failed:", error);
     setBackendError(error);
@@ -1181,6 +1244,23 @@ function applyBackendPlayerData(data, options = {}) {
   }
 
   state.coins = serverBalance;
+
+  if (Number.isFinite(Number(user.server_energy))) {
+    state.energy = Math.max(0, Math.min(getMaxEnergy(), Number(user.server_energy)));
+  }
+
+  if (Number.isFinite(Number(user.energy_capacity_level))) {
+    state.energyCapacityLevel = Math.max(0, Math.min(CONFIG.energyCapacityMaxLevel, Number(user.energy_capacity_level)));
+  }
+
+  if (Number.isFinite(Number(user.energy_capacity_cooldown_end))) {
+    state.energyCapacityCooldownEnd = Number(user.energy_capacity_cooldown_end || 0);
+  }
+
+  if (Number.isFinite(Number(user.server_total_taps))) {
+    state.totalTaps = Math.max(Number(state.totalTaps || 0), Number(user.server_total_taps || 0));
+  }
+
   state.lastTick = Date.now();
   state.totalEarned = Math.max(
     Number(state.totalEarned || 0),
@@ -1638,8 +1718,18 @@ function renderEnergyCapacityUpgrade() {
       : `+${CONFIG.energyCapacityPerLevel}`;
 }
 
-function buyEnergyCapacityUpgrade() {
+async function buyEnergyCapacityUpgrade() {
   applyElapsedProgress(false);
+
+  if (!isTelegramMiniAppReady()) {
+    showToast("Улучшение энергии в бете работает только через Telegram Mini App.");
+    return;
+  }
+
+  if (backendActionBusy) {
+    showToast("Подожди, предыдущее действие ещё синхронизируется.");
+    return;
+  }
 
   const level = getEnergyCapacityLevel();
   if (level >= CONFIG.energyCapacityMaxLevel) {
@@ -1659,18 +1749,32 @@ function buyEnergyCapacityUpgrade() {
     return;
   }
 
-  const oldMaxEnergy = getMaxEnergy();
-  const nextLevel = level + 1;
-  const cooldownSeconds = getEnergyCapacityCooldownSeconds(nextLevel);
+  backendActionBusy = true;
+  renderEnergyCapacityUpgrade();
 
-  state.coins -= cost;
-  state.energyCapacityLevel = nextLevel;
-  state.energyCapacityCooldownEnd = Date.now() + cooldownSeconds * 1000;
-  state.energy = Math.min(getMaxEnergy(), state.energy + (getMaxEnergy() - oldMaxEnergy));
+  try {
+    await flushServerTaps({ silent: true });
 
-  saveState();
-  renderAll();
-  showToast(`Ёмкость энергии улучшена до ${nextLevel} уровня. КД: ${formatLongTime(cooldownSeconds * 1000)}.`);
+    const data = await callGameBackend({
+      action: "buy_energy_capacity",
+    });
+
+    applyBackendPlayerData(data, { silent: true });
+
+    const upgrade = data.energy_upgrade || {};
+    const nextLevel = Number(upgrade.level || getEnergyCapacityLevel());
+    const cooldownMs = Number(upgrade.cooldown_ms || 0);
+
+    hapticTap("medium");
+    showToast(`Ёмкость энергии улучшена до ${nextLevel} уровня${cooldownMs > 0 ? `. КД: ${formatLongTime(cooldownMs)}.` : "."}`);
+  } catch (error) {
+    console.warn("Energy capacity upgrade failed:", error);
+    showToast(String(error?.message || error));
+    setBackendError(error);
+  } finally {
+    backendActionBusy = false;
+    renderAll();
+  }
 }
 
 function getEnergyCapacityLevel() {
