@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Raccoon Tap</title>
-  <link rel="stylesheet" href="styles.css?v=16" />
+  <link rel="stylesheet" href="styles.css?v=17" />
 </head>
 <body>
   <div class="app-shell">
@@ -320,6 +320,17 @@
         <div class="info-card profile-note" id="profileBackendValue">
           Профиль синхронизируется с Supabase backend после запуска через Telegram Mini App.
         </div>
+      
+        <div class="profile-card helper-card">
+          <div class="helper-card-icon" aria-hidden="true">🦝</div>
+          <div class="helper-card-body">
+            <span class="label">Помощник</span>
+            <h3>Енот-помощник</h3>
+            <p>Скоро здесь появится помощник, который будет отвечать на вопросы по игре.</p>
+          </div>
+          <button id="raccoonHelperBtn" class="buy-btn helper-btn">Открыть</button>
+        </div>
+
       </section>
 
       <section class="screen" id="screen-listing">
@@ -423,6 +434,16 @@
     </div>
   </div>
 
+  
+  <div class="modal hidden" id="helperSoonModal" role="dialog" aria-modal="true" aria-labelledby="helperSoonTitle">
+    <div class="modal-card helper-soon-modal">
+      <div class="helper-soon-icon" aria-hidden="true">🦝</div>
+      <h2 id="helperSoonTitle">Скоро</h2>
+      <p>Енот-помощник появится в одном из следующих обновлений.</p>
+      <button id="helperSoonClose" class="primary-btn helper-soon-close">Понятно</button>
+    </div>
+  </div>
+
   <div id="toast" class="toast"></div>
     <div id="offlineModal" class="modal hidden">
       <div class="modal-card">
@@ -434,6 +455,6 @@
   </div>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="app.js?v=16"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>

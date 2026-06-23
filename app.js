@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v16-stars-invoice-fix",
+  appVersion: "v17-helper-soon",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -278,7 +278,10 @@ const els = {
   profileTotalEarnedValue: $("#profileTotalEarnedValue"),
   profileBusinessLevelsValue: $("#profileBusinessLevelsValue"),
   profileBackendValue: $("#profileBackendValue"),
-  refreshProfileBtn: $("#refreshProfileBtn")
+  refreshProfileBtn: $("#refreshProfileBtn"),
+  raccoonHelperBtn: $("#raccoonHelperBtn"),
+  helperSoonModal: $("#helperSoonModal"),
+  helperSoonClose: $("#helperSoonClose")
 };
 
 init();
@@ -303,6 +306,7 @@ function init() {
   bindReferralActions();
   bindLeaderboardActions();
   bindProfileActions();
+  bindHelperSoonActions();
   renderCategoryTabs();
   renderBoosts();
   renderAll();
@@ -1043,6 +1047,26 @@ function renderLeaderboardIfOpen() {
   if ($("#screen-profile")?.classList.contains("active")) {
     renderProfile();
   }
+}
+
+
+function openHelperSoonModal() {
+  if (!els.helperSoonModal) {
+    showToast("Скоро");
+    return;
+  }
+
+  els.helperSoonModal.classList.remove("hidden");
+}
+
+function closeHelperSoonModal() {
+  if (!els.helperSoonModal) return;
+  els.helperSoonModal.classList.add("hidden");
+}
+
+function bindHelperSoonActions() {
+  els.raccoonHelperBtn?.addEventListener("click", openHelperSoonModal);
+  els.helperSoonClose?.addEventListener("click", closeHelperSoonModal);
 }
 
 function bindProfileActions() {
