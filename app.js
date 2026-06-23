@@ -1,4 +1,5 @@
 const CONFIG = {
+  appVersion: "v12-beta-safe",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -201,6 +202,8 @@ let state = loadState();
 let activeCategoryId = "markets";
 let toastTimer = null;
 let lastRenderSecond = 0;
+let backendActionBusy = false;
+let lastManualSyncAt = 0;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -294,7 +297,7 @@ function init() {
 
   setInterval(gameLoop, 1000);
   setInterval(saveState, 5000);
-  setInterval(syncTelegramPlayer, 60 * 1000);
+  setInterval(() => syncTelegramPlayer({ force: true }), 30 * 1000);
   window.addEventListener("beforeunload", () => {
     applyElapsedProgress(false);
     saveState();
@@ -458,8 +461,8 @@ function bindReset() {
     activeCategoryId = "markets";
     saveState();
     renderAll();
-    syncTelegramPlayer();
-    showToast("Прогресс сброшен. Уже полученные серверные реферальные бонусы не дублируются.");
+    syncTelegramPlayer({ force: true });
+    showToast("Локальный прогресс очищен. Серверные данные снова подтянутся из Supabase.");
   });
 }
 
@@ -642,20 +645,90 @@ function captureIncomingReferral() {
   }
 }
 
-async function syncTelegramPlayer() {
+function getTelegramInitData() {
+  return window.Telegram?.WebApp?.initData || "";
+}
+
+function isTelegramMiniAppReady() {
+  return Boolean(getTelegramInitData());
+}
+
+function setBackendError(error) {
+  const message = String(error?.message || error);
+  state.referrals.backendEnabled = false;
+  state.referrals.backendStatus = "error";
+  state.referrals.backendError = message;
+  state.leaderboard = {
+    ...structuredClone(defaultState.leaderboard),
+    ...(state.leaderboard || {}),
+    status: "error",
+    error: message
+  };
+  saveState();
+  renderReferralsIfOpen();
+  renderLeaderboardIfOpen();
+  renderProfileIfOpen();
+}
+
+async function callGameBackend(extraBody = {}) {
   ensureReferralState();
 
   const backendUrl = String(CONFIG.backendUrl || "").trim();
   if (!backendUrl) {
+    throw new Error("Backend URL is not configured");
+  }
+
+  const initData = getTelegramInitData();
+  if (!initData) {
+    throw new Error("Открой игру через Telegram Mini App, чтобы синхронизировать профиль.");
+  }
+
+  const headers = {
+    "Content-Type": "application/json"
+  };
+
+  if (CONFIG.supabaseAnonKey) {
+    headers.apikey = CONFIG.supabaseAnonKey;
+    headers.Authorization = `Bearer ${CONFIG.supabaseAnonKey}`;
+  }
+
+  const response = await fetch(backendUrl, {
+    method: "POST",
+    headers,
+    cache: "no-store",
+    body: JSON.stringify({
+      action: "sync",
+      appVersion: CONFIG.appVersion,
+      initData,
+      startParam: toTelegramStartParam(getIncomingReferralParam()),
+      businessLevels: getSanitizedBusinessLevelsForBackend(),
+      businessCooldowns: getSanitizedBusinessCooldownsForBackend(),
+      totalEarned: Math.floor(Number(state.totalEarned || 0)),
+      clientBalance: Math.floor(Number(state.coins || 0)),
+      knownServerBalance: Math.floor(Number(state.referrals?.serverBalance || 0)),
+      ...extraBody
+    })
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || `Backend response ${response.status}`);
+  }
+
+  return data;
+}
+
+async function syncTelegramPlayer(options = {}) {
+  ensureReferralState();
+
+  if (!String(CONFIG.backendUrl || "").trim()) {
     state.referrals.backendStatus = "local";
     renderReferralsIfOpen();
     return;
   }
 
-  const tg = window.Telegram?.WebApp;
-  const initData = tg?.initData || "";
-
-  if (!initData) {
+  if (!isTelegramMiniAppReady()) {
     state.referrals.backendEnabled = false;
     state.referrals.backendStatus = "not_telegram";
     state.referrals.backendError = "";
@@ -671,7 +744,12 @@ async function syncTelegramPlayer() {
     return;
   }
 
-  const startParam = toTelegramStartParam(getIncomingReferralParam());
+  const now = Date.now();
+  if (!options.force && now - lastManualSyncAt < 2500) {
+    return;
+  }
+  lastManualSyncAt = now;
+
   state.referrals.backendStatus = "syncing";
   state.referrals.backendError = "";
   state.leaderboard = {
@@ -685,50 +763,11 @@ async function syncTelegramPlayer() {
   renderProfileIfOpen();
 
   try {
-    const headers = {
-      "Content-Type": "application/json"
-    };
-
-    if (CONFIG.supabaseAnonKey) {
-      headers.apikey = CONFIG.supabaseAnonKey;
-      headers.Authorization = `Bearer ${CONFIG.supabaseAnonKey}`;
-    }
-
-    const response = await fetch(backendUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        initData,
-        startParam,
-        businessLevels: getSanitizedBusinessLevelsForBackend(),
-        totalEarned: Math.floor(Number(state.totalEarned || 0)),
-        clientBalance: Math.floor(Number(state.coins || 0)),
-        knownServerBalance: Math.floor(Number(state.referrals?.serverBalance || 0))
-      })
-    });
-
-    const data = await response.json().catch(() => null);
-
-    if (!response.ok || !data?.ok) {
-      throw new Error(data?.error || `Backend response ${response.status}`);
-    }
-
+    const data = await callGameBackend({ action: "sync" });
     applyBackendPlayerData(data);
   } catch (error) {
-    console.warn("Referral backend sync failed:", error);
-    state.referrals.backendEnabled = false;
-    state.referrals.backendStatus = "error";
-    state.referrals.backendError = String(error?.message || error);
-    state.leaderboard = {
-      ...structuredClone(defaultState.leaderboard),
-      ...(state.leaderboard || {}),
-      status: "error",
-      error: String(error?.message || error)
-    };
-    saveState();
-    renderReferralsIfOpen();
-    renderLeaderboardIfOpen();
-    renderProfileIfOpen();
+    console.warn("Backend sync failed:", error);
+    setBackendError(error);
   }
 }
 
@@ -754,6 +793,15 @@ function applyBackendPlayerData(data) {
   state.referrals.serverBalance = serverBalance;
   state.referrals.serverBalanceApplied = serverBalance;
   state.referrals.rewardsEarned = Math.max(0, Number(data.referral_rewards_total ?? state.referrals.rewardsEarned ?? 0));
+
+  if (user.business_levels && typeof user.business_levels === "object") {
+    state.businessLevels = sanitizeBusinessLevelsFromServer(user.business_levels);
+  }
+
+  if (user.business_cooldowns && typeof user.business_cooldowns === "object") {
+    state.businessCooldowns = sanitizeBusinessCooldownsFromServer(user.business_cooldowns);
+  }
+
   state.coins = serverBalance;
   state.totalEarned = Math.max(
     Number(state.totalEarned || 0),
@@ -799,7 +847,7 @@ function ensureLeaderboardState() {
 
 function bindLeaderboardActions() {
   els.refreshLeaderboardBtn?.addEventListener("click", async () => {
-    await syncTelegramPlayer();
+    await syncTelegramPlayer({ force: true });
     renderLeaderboard();
   });
 }
@@ -832,7 +880,7 @@ function renderLeaderboardIfOpen() {
 
 function bindProfileActions() {
   els.refreshProfileBtn?.addEventListener("click", async () => {
-    await syncTelegramPlayer();
+    await syncTelegramPlayer({ force: true });
     renderProfile();
   });
 }
@@ -901,7 +949,7 @@ function renderLeaderboard() {
   ensureLeaderboardState();
 
   const serverProfit = Math.max(0, Number(state.leaderboard?.myProfitPerHour || 0));
-  const profitPerHour = state.leaderboard.status === "connected" && serverProfit > 0
+  const profitPerHour = state.leaderboard.status === "connected"
     ? serverProfit
     : getTotalProfitPerHour();
 
@@ -1205,12 +1253,17 @@ function renderBusinesses() {
     const profitGain = Math.max(0, nextProfit - currentProfit);
     const paybackHours = profitGain > 0 ? nextCost / profitGain : Infinity;
     const cooldownLeft = getBusinessCooldownLeft(business.id);
-    const canBuy = state.coins >= nextCost && level < CONFIG.businessMaxLevel && cooldownLeft <= 0;
+    const telegramReady = isTelegramMiniAppReady();
+    const canBuy = telegramReady && !backendActionBusy && state.coins >= nextCost && level < CONFIG.businessMaxLevel && cooldownLeft <= 0;
     const buttonText = level >= CONFIG.businessMaxLevel
       ? "MAX"
-      : cooldownLeft > 0
-        ? `КД ${formatLongTime(cooldownLeft)}`
-        : formatNumber(nextCost);
+      : !telegramReady
+        ? "Открой в TG"
+        : backendActionBusy
+          ? "Синхронизация..."
+          : cooldownLeft > 0
+            ? `КД ${formatLongTime(cooldownLeft)}`
+            : formatNumber(nextCost);
 
     const card = document.createElement("article");
     card.className = "business-card";
@@ -1267,11 +1320,21 @@ function renderBusinesses() {
   });
 }
 
-function buyBusinessLevel(businessId) {
+async function buyBusinessLevel(businessId) {
   applyElapsedProgress(false);
 
   const business = findBusiness(businessId);
   if (!business) return;
+
+  if (!isTelegramMiniAppReady()) {
+    showToast("Покупки бизнесов в бете работают только через Telegram Mini App.");
+    return;
+  }
+
+  if (backendActionBusy) {
+    showToast("Подожди, предыдущая покупка ещё синхронизируется.");
+    return;
+  }
 
   const level = getBusinessLevel(businessId);
   if (level >= CONFIG.businessMaxLevel) {
@@ -1291,16 +1354,30 @@ function buyBusinessLevel(businessId) {
     return;
   }
 
-  const nextLevel = level + 1;
-  const cooldownSeconds = getBusinessCooldownSeconds(business, nextLevel);
+  backendActionBusy = true;
+  renderBusinesses();
 
-  state.coins -= cost;
-  state.businessLevels[businessId] = nextLevel;
-  state.businessCooldowns[businessId] = Date.now() + cooldownSeconds * 1000;
+  try {
+    const data = await callGameBackend({
+      action: "buy_business",
+      businessId
+    });
 
-  saveState();
-  renderAll();
-  showToast(`${business.name} улучшен до ${nextLevel} уровня. КД: ${formatLongTime(cooldownSeconds * 1000)}.`);
+    applyBackendPlayerData(data);
+
+    const purchase = data.purchase || {};
+    const nextLevel = Number(purchase.level || getBusinessLevel(businessId));
+    const cooldownMs = Number(purchase.cooldown_ms || 0);
+
+    showToast(`${business.name} улучшен до ${nextLevel} уровня${cooldownMs > 0 ? `. КД: ${formatLongTime(cooldownMs)}.` : "."}`);
+  } catch (error) {
+    console.warn("Business purchase failed:", error);
+    showToast(String(error?.message || error));
+    setBackendError(error);
+  } finally {
+    backendActionBusy = false;
+    renderAll();
+  }
 }
 
 function renderBoosts() {
@@ -1418,6 +1495,53 @@ function getSanitizedBusinessLevelsForBackend() {
   });
 
   return payload;
+}
+
+function getSanitizedBusinessCooldownsForBackend() {
+  const payload = {};
+  const now = Date.now();
+
+  categories.forEach((category) => {
+    category.businesses.forEach((business) => {
+      const cooldownEnd = Number(state.businessCooldowns?.[business.id] || 0);
+      if (Number.isFinite(cooldownEnd) && cooldownEnd > now) {
+        payload[business.id] = Math.floor(cooldownEnd);
+      }
+    });
+  });
+
+  return payload;
+}
+
+function sanitizeBusinessLevelsFromServer(rawLevels) {
+  const levels = {};
+
+  categories.forEach((category) => {
+    category.businesses.forEach((business) => {
+      const level = Math.max(0, Math.min(CONFIG.businessMaxLevel, Math.floor(Number(rawLevels?.[business.id] || 0))));
+      if (level > 0) {
+        levels[business.id] = level;
+      }
+    });
+  });
+
+  return levels;
+}
+
+function sanitizeBusinessCooldownsFromServer(rawCooldowns) {
+  const cooldowns = {};
+  const now = Date.now();
+
+  categories.forEach((category) => {
+    category.businesses.forEach((business) => {
+      const cooldownEnd = Math.floor(Number(rawCooldowns?.[business.id] || 0));
+      if (Number.isFinite(cooldownEnd) && cooldownEnd > now) {
+        cooldowns[business.id] = cooldownEnd;
+      }
+    });
+  });
+
+  return cooldowns;
 }
 
 function getBusinessProfitPerHour(business, level) {
