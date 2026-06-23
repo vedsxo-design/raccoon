@@ -940,7 +940,7 @@ function renderLeaderboard() {
     const name = escapeHtml(getLeaderboardDisplayName(item));
     const profit = formatNumber(item.profit_per_hour || 0);
     const earned = formatNumber(item.total_earned || 0);
-    const isMe = currentTelegramId && telegramId === currentTelegramId;
+    const isMe = Boolean(item.is_me) || (currentTelegramId && telegramId === currentTelegramId);
     const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
 
     return `
@@ -956,14 +956,17 @@ function renderLeaderboard() {
 }
 
 function getLeaderboardDisplayName(item) {
-  const username = String(item.username || "").trim();
-  if (username) return `@${username}`;
+  const displayName = String(item.display_name || "").trim();
+  if (displayName) return displayName;
 
   const firstName = String(item.first_name || "").trim();
   if (firstName) return firstName;
 
+  const publicId = String(item.public_id || "").trim();
+  if (publicId) return `Игрок #${publicId}`;
+
   const telegramId = String(item.telegram_id || "");
-  return telegramId ? `Игрок ${telegramId.slice(-4)}` : "Unknown Raccoon";
+  return telegramId ? `Игрок #${telegramId.slice(-4)}` : "Raccoon Player";
 }
 
 function getLeaderboardStatusText() {
@@ -973,7 +976,7 @@ function getLeaderboardStatusText() {
     const syncedAt = state.leaderboard.lastSyncAt
       ? new Date(state.leaderboard.lastSyncAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
       : "только что";
-    return `Топ-100 обновлён. В рейтинг попадают все игроки, даже с нулевой прибылью. Последняя синхронизация: ${syncedAt}.`;
+    return `Топ-100 обновлён. В рейтинг попадают все игроки, а @username в топе скрыт для приватности. Последняя синхронизация: ${syncedAt}.`;
   }
 
   if (status === "syncing") {
