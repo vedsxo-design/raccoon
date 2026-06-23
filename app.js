@@ -205,6 +205,7 @@ let toastTimer = null;
 let lastRenderSecond = 0;
 let backendActionBusy = false;
 let lastManualSyncAt = 0;
+let betaNoticePending = false;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -297,6 +298,7 @@ function init() {
   renderBoosts();
   renderAll();
   syncTelegramPlayer();
+  setTimeout(showBetaNotice, 300);
 
   setInterval(gameLoop, 1000);
   setInterval(saveState, 5000);
@@ -403,6 +405,7 @@ function cleanExpiredBoosts() {
 }
 
 function bindNavigation() {
+  els.betaModalClose?.addEventListener("click", closeBetaNotice);
   document.querySelectorAll(".nav-btn").forEach((button) => {
     button.addEventListener("click", () => {
       const screen = button.dataset.screen;
@@ -416,6 +419,9 @@ function bindNavigation() {
 
   els.offlineClose.addEventListener("click", () => {
     els.offlineModal.classList.add("hidden");
+    if (betaNoticePending || !state.betaNoticeSeen) {
+      setTimeout(showBetaNotice, 160);
+    }
   });
 }
 
@@ -1439,7 +1445,6 @@ function activateBoost(boostId) {
   state.usedBoostDates[boost.id] = getDateKey();
   saveState();
   renderAll();
-showBetaNotice();
   showToast(`${boost.name} активирован.`);
 }
 
@@ -1745,6 +1750,17 @@ function formatLongTime(milliseconds) {
 
 function showBetaNotice() {
   if (!els.betaModal || state.betaNoticeSeen) return;
+
+  const offlineIsOpen =
+    els.offlineModal &&
+    !els.offlineModal.classList.contains("hidden");
+
+  if (offlineIsOpen) {
+    betaNoticePending = true;
+    return;
+  }
+
+  betaNoticePending = false;
   els.betaModal.classList.remove("hidden");
 }
 
@@ -1764,65 +1780,99 @@ function showToast(message) {
 
 function businessLogoSvg(seed, categoryId = "") {
   const type = categoryId || (seed < 20 ? "markets" : seed < 40 ? "pr" : seed < 60 ? "legal" : "special");
+  const index = Math.max(0, seed % 20);
+  const variant = index % 12;
+  const gid = `${type}${seed}`;
 
   const common = `
     <defs>
-      <linearGradient id="bizGold${seed}" x1="0" x2="1" y1="0" y2="1">
+      <linearGradient id="bizGold${gid}" x1="0" x2="1" y1="0" y2="1">
         <stop offset="0" stop-color="#ffe7a3"/>
         <stop offset="1" stop-color="#f0a735"/>
       </linearGradient>
-      <linearGradient id="bizBlue${seed}" x1="0" x2="1" y1="0" y2="1">
+      <linearGradient id="bizBlue${gid}" x1="0" x2="1" y1="0" y2="1">
         <stop offset="0" stop-color="#79e0ff"/>
         <stop offset="1" stop-color="#1764d8"/>
       </linearGradient>
+      <linearGradient id="bizGreen${gid}" x1="0" x2="1" y1="0" y2="1">
+        <stop offset="0" stop-color="#9df7bd"/>
+        <stop offset="1" stop-color="#28b879"/>
+      </linearGradient>
+      <linearGradient id="bizPink${gid}" x1="0" x2="1" y1="0" y2="1">
+        <stop offset="0" stop-color="#ffb6d0"/>
+        <stop offset="1" stop-color="#b96cff"/>
+      </linearGradient>
     </defs>
-    <rect x="4" y="4" width="56" height="56" rx="18" fill="#101a2d" stroke="url(#bizGold${seed})" stroke-width="2.4"/>
-    <circle cx="48" cy="16" r="7" fill="url(#bizGold${seed})"/>
-    <path d="M45 16c2-4 5-4 7 0-1 4-6 4-7 0z" fill="#4b2a08" opacity=".75"/>
+    <rect x="4" y="4" width="56" height="56" rx="18" fill="#101a2d" stroke="url(#bizGold${gid})" stroke-width="2.3"/>
+    <circle cx="50" cy="15" r="7" fill="url(#bizGold${gid})"/>
+    <path d="M47 15c2-4 5-4 7 0-1 4-6 4-7 0z" fill="#4b2a08" opacity=".75"/>
   `;
 
-  const icons = {
-    markets: `
-      ${common}
-      <path d="M15 28h34v23H15z" fill="#f3d3a0"/>
-      <path d="M13 23h38l-4-8H17z" fill="url(#bizBlue${seed})"/>
-      <path d="M14 25h7v7h-7zm7 0h7v7h-7zm7 0h7v7h-7zm7 0h7v7h-7zm7 0h7v7h-7z" fill="#fff3dc" opacity=".9"/>
-      <rect x="20" y="36" width="10" height="15" rx="2" fill="#17233b"/>
-      <rect x="35" y="36" width="10" height="8" rx="2" fill="#203a62"/>
-      <circle cx="44" cy="44" r="8" fill="url(#bizGold${seed})"/>
-    `,
-    pr: `
-      ${common}
-      <path d="M16 37c8-8 18-8 28 0v12H16z" fill="#17233b"/>
-      <circle cx="25" cy="32" r="6" fill="url(#bizGold${seed})"/>
-      <circle cx="17" cy="36" r="5" fill="#2b77d9"/>
-      <circle cx="40" cy="36" r="5" fill="#2b77d9"/>
-      <path d="M31 23l16-7v20l-16-5z" fill="#fff1d3"/>
-      <path d="M23 24h9v10h-9z" fill="url(#bizBlue${seed})"/>
-      <path d="M47 18c4 2 6 5 6 9s-2 7-6 9" stroke="url(#bizGold${seed})" stroke-width="3" fill="none" stroke-linecap="round"/>
-    `,
-    legal: `
-      ${common}
-      <path d="M16 16h24c4 0 7 3 7 7v27H16z" fill="#f3e2c1"/>
-      <path d="M22 24h17M22 31h16M22 38h12" stroke="#7b6a55" stroke-width="2" stroke-linecap="round"/>
-      <path d="M36 30h18v10c0 9-7 14-9 15-2-1-9-6-9-15z" fill="url(#bizBlue${seed})" stroke="url(#bizGold${seed})" stroke-width="2"/>
-      <path d="M45 34v12M39 38h12M40 46h10" stroke="url(#bizGold${seed})" stroke-width="2" stroke-linecap="round"/>
-      <path d="M23 51l14-8 3 5-14 8z" fill="#6d391c"/>
-      <path d="M35 41l6-3 3 5-6 3z" fill="url(#bizGold${seed})"/>
-    `,
-    special: `
-      ${common}
-      <circle cx="34" cy="34" r="18" fill="none" stroke="#224b83" stroke-width="2"/>
-      <circle cx="34" cy="34" r="11" fill="none" stroke="#2c78c8" stroke-width="2"/>
-      <path d="M19 48l26-26" stroke="#79e0ff" stroke-width="3" stroke-linecap="round"/>
-      <path d="M20 49c9-1 21-7 30-21" stroke="url(#bizGold${seed})" stroke-width="2" fill="none" stroke-linecap="round"/>
-      <path d="M21 50h25v8H21z" fill="#1a2a45"/>
-      <rect x="39" y="40" width="16" height="13" rx="3" fill="#27364c" stroke="url(#bizGold${seed})" stroke-width="1.5"/>
-      <path d="M43 46h8" stroke="#79e0ff" stroke-width="2" stroke-linecap="round"/>
-    `
-  };
+  const markets = [
+    `<path d="M15 29h34v22H15z" fill="#f3d3a0"/><path d="M13 23h38l-4-8H17z" fill="url(#bizBlue${gid})"/><path d="M14 25h7v7h-7zm7 0h7v7h-7zm7 0h7v7h-7zm7 0h7v7h-7zm7 0h7v7h-7z" fill="#fff3dc"/><rect x="21" y="38" width="9" height="13" rx="2" fill="#17233b"/><circle cx="43" cy="44" r="8" fill="url(#bizGold${gid})"/>`,
+    `<rect x="15" y="23" width="34" height="25" rx="6" fill="url(#bizBlue${gid})"/><path d="M20 23c0-10 24-10 24 0" fill="none" stroke="url(#bizGold${gid})" stroke-width="5" stroke-linecap="round"/><circle cx="25" cy="36" r="4" fill="#fff3dc"/><circle cx="39" cy="36" r="4" fill="#fff3dc"/><path d="M24 44h18" stroke="#101a2d" stroke-width="3" stroke-linecap="round"/>`,
+    `<path d="M16 23h8l4 21h19" stroke="url(#bizGold${gid})" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M26 28h24l-4 14H29z" fill="url(#bizBlue${gid})"/><circle cx="32" cy="50" r="4" fill="#ffe7a3"/><circle cx="45" cy="50" r="4" fill="#ffe7a3"/>`,
+    `<path d="M13 30h38l-5 21H18z" fill="#13233d"/><path d="M17 22h30l4 8H13z" fill="url(#bizPink${gid})"/><path d="M22 34h20M22 41h14" stroke="#ffe7a3" stroke-width="3" stroke-linecap="round"/><circle cx="44" cy="43" r="8" fill="url(#bizGold${gid})"/>`,
+    `<rect x="19" y="16" width="26" height="36" rx="8" fill="url(#bizBlue${gid})"/><rect x="24" y="22" width="16" height="12" rx="3" fill="#dff7ff"/><path d="M23 41h18" stroke="url(#bizGold${gid})" stroke-width="4" stroke-linecap="round"/><circle cx="32" cy="48" r="3" fill="#ffe7a3"/>`,
+    `<path d="M13 34h27v14H13z" fill="url(#bizBlue${gid})"/><path d="M40 38h9l5 10H40z" fill="#f3d3a0"/><circle cx="22" cy="51" r="5" fill="url(#bizGold${gid})"/><circle cx="45" cy="51" r="5" fill="url(#bizGold${gid})"/><path d="M18 28h17" stroke="#ffe7a3" stroke-width="4" stroke-linecap="round"/>`,
+    `<rect x="17" y="14" width="30" height="40" rx="7" fill="#16243a" stroke="url(#bizGold${gid})" stroke-width="3"/><rect x="22" y="20" width="20" height="22" rx="4" fill="url(#bizBlue${gid})"/><path d="M26 48h12" stroke="#ffe7a3" stroke-width="3" stroke-linecap="round"/><path d="M26 32l5 5 8-11" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+    `<path d="M16 48h34" stroke="#ffe7a3" stroke-width="4" stroke-linecap="round"/><rect x="19" y="35" width="6" height="13" rx="2" fill="url(#bizBlue${gid})"/><rect x="29" y="27" width="6" height="21" rx="2" fill="url(#bizGreen${gid})"/><rect x="39" y="19" width="6" height="29" rx="2" fill="url(#bizGold${gid})"/><path d="M17 30l12-9 8 5 12-12" stroke="#79e0ff" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+    `<circle cx="32" cy="33" r="18" fill="url(#bizBlue${gid})"/><path d="M14 33h36M32 15c8 9 8 27 0 36M32 15c-8 9-8 27 0 36" stroke="#dff7ff" stroke-width="2" fill="none"/><circle cx="44" cy="44" r="8" fill="url(#bizGold${gid})"/>`,
+    `<path d="M17 24h30v22H17z" fill="#17233b" stroke="url(#bizGold${gid})" stroke-width="3"/><path d="M22 29h20M22 36h20" stroke="#79e0ff" stroke-width="3" stroke-linecap="round"/><path d="M23 47l-6 6M47 47l6 6" stroke="#ffe7a3" stroke-width="3" stroke-linecap="round"/>`,
+    `<path d="M15 25h34v27H15z" fill="#f3d3a0"/><path d="M12 20h40v8H12z" fill="url(#bizGold${gid})"/><rect x="21" y="35" width="7" height="17" fill="#17233b"/><rect x="35" y="35" width="7" height="9" fill="url(#bizBlue${gid})"/><path d="M20 15h24" stroke="#79e0ff" stroke-width="4" stroke-linecap="round"/>`,
+    `<circle cx="32" cy="32" r="18" fill="#13233d" stroke="url(#bizGold${gid})" stroke-width="3"/><path d="M20 37l8-9 6 5 10-12" stroke="#79e0ff" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M44 21v10H34" stroke="#79e0ff" stroke-width="3" fill="none" stroke-linecap="round"/>`
+  ];
 
-  return `<svg viewBox="0 0 64 64" aria-hidden="true">${icons[type] || icons.markets}</svg>`;
+  const pr = [
+    `<path d="M17 39c7-7 23-7 30 0v12H17z" fill="#17233b"/><circle cx="32" cy="31" r="8" fill="url(#bizGold${gid})"/><circle cx="20" cy="36" r="5" fill="url(#bizBlue${gid})"/><circle cx="44" cy="36" r="5" fill="url(#bizBlue${gid})"/>`,
+    `<path d="M30 23l18-8v23l-18-6z" fill="#fff1d3"/><path d="M18 24h12v10H18z" fill="url(#bizBlue${gid})"/><path d="M47 18c4 2 6 5 6 9s-2 7-6 9" stroke="url(#bizGold${gid})" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M21 35l5 15" stroke="#ffe7a3" stroke-width="4" stroke-linecap="round"/>`,
+    `<rect x="14" y="18" width="36" height="28" rx="9" fill="url(#bizBlue${gid})"/><path d="M24 46l-5 8 13-8" fill="url(#bizBlue${gid})"/><circle cx="25" cy="32" r="3" fill="#fff"/><circle cx="32" cy="32" r="3" fill="#fff"/><circle cx="39" cy="32" r="3" fill="#fff"/>`,
+    `<path d="M18 20h28v32H18z" fill="#13233d" stroke="url(#bizGold${gid})" stroke-width="3"/><path d="M23 29h18M23 36h18M23 43h12" stroke="#79e0ff" stroke-width="3" stroke-linecap="round"/><circle cx="45" cy="20" r="7" fill="url(#bizPink${gid})"/>`,
+    `<rect x="15" y="22" width="34" height="24" rx="7" fill="url(#bizBlue${gid})"/><path d="M20 29h24M20 36h17" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M43 42l7 8" stroke="url(#bizGold${gid})" stroke-width="5" stroke-linecap="round"/><circle cx="43" cy="39" r="7" fill="#ffe7a3"/>`,
+    `<path d="M20 45c1-11 8-18 18-18s17 7 18 18" fill="none" stroke="url(#bizGold${gid})" stroke-width="4" stroke-linecap="round"/><rect x="16" y="43" width="10" height="12" rx="4" fill="url(#bizBlue${gid})"/><rect x="50" y="43" width="10" height="12" rx="4" fill="url(#bizBlue${gid})"/><circle cx="38" cy="27" r="7" fill="#ffe7a3"/>`,
+    `<path d="M16 22h32v28H16z" fill="#17233b" stroke="url(#bizGold${gid})" stroke-width="3"/><path d="M22 38l6-7 5 4 9-11" stroke="#79e0ff" stroke-width="4" fill="none" stroke-linecap="round"/><circle cx="46" cy="18" r="6" fill="url(#bizPink${gid})"/>`,
+    `<path d="M13 36c9-12 29-12 38 0" stroke="url(#bizGold${gid})" stroke-width="5" fill="none" stroke-linecap="round"/><circle cx="21" cy="38" r="6" fill="url(#bizBlue${gid})"/><circle cx="32" cy="30" r="7" fill="#ffe7a3"/><circle cx="43" cy="38" r="6" fill="url(#bizBlue${gid})"/><path d="M18 50h28" stroke="#fff" stroke-width="3" stroke-linecap="round"/>`,
+    `<path d="M16 18h32v34H16z" rx="6" fill="url(#bizBlue${gid})"/><path d="M23 26h18M23 33h18M23 40h10" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M43 43l8 8" stroke="url(#bizGold${gid})" stroke-width="5" stroke-linecap="round"/>`,
+    `<circle cx="32" cy="32" r="18" fill="#13233d" stroke="url(#bizGold${gid})" stroke-width="3"/><path d="M21 35c7-9 15-9 22 0M26 27h12" stroke="#79e0ff" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="24" cy="22" r="4" fill="url(#bizPink${gid})"/><circle cx="42" cy="42" r="4" fill="url(#bizGreen${gid})"/>`,
+    `<path d="M14 40h36v12H14z" fill="#17233b"/><path d="M20 35l7-12 7 12M34 35l7-12 7 12" stroke="url(#bizGold${gid})" stroke-width="4" fill="none" stroke-linecap="round"/><circle cx="28" cy="23" r="5" fill="url(#bizBlue${gid})"/><circle cx="42" cy="23" r="5" fill="url(#bizPink${gid})"/>`,
+    `<path d="M32 13l8 14 16 3-11 12 2 16-15-7-15 7 2-16L8 30l16-3z" fill="url(#bizGold${gid})"/><path d="M24 35h16M32 27v16" stroke="#17233b" stroke-width="4" stroke-linecap="round"/>`
+  ];
+
+  const legal = [
+    `<path d="M16 16h27c4 0 7 3 7 7v27H16z" fill="#f3e2c1"/><path d="M22 24h18M22 31h17M22 38h12" stroke="#7b6a55" stroke-width="2" stroke-linecap="round"/><path d="M35 30h18v10c0 9-7 14-9 15-2-1-9-6-9-15z" fill="url(#bizBlue${gid})" stroke="url(#bizGold${gid})" stroke-width="2"/>`,
+    `<path d="M32 16v30M20 26h24" stroke="url(#bizGold${gid})" stroke-width="4" stroke-linecap="round"/><path d="M19 27l-8 14h16zM45 27l-8 14h16z" fill="url(#bizBlue${gid})"/><path d="M22 50h20" stroke="#fff1d3" stroke-width="4" stroke-linecap="round"/>`,
+    `<path d="M18 22h28v26H18z" fill="#f3e2c1" stroke="url(#bizGold${gid})" stroke-width="3"/><path d="M23 30h18M23 37h12" stroke="#7b6a55" stroke-width="2" stroke-linecap="round"/><path d="M35 48l12 6M43 40l12 6" stroke="#6d391c" stroke-width="5" stroke-linecap="round"/>`,
+    `<path d="M18 18h28v34H18z" fill="#13233d" stroke="url(#bizGold${gid})" stroke-width="3"/><path d="M24 27h16M24 34h16M24 41h10" stroke="#79e0ff" stroke-width="3" stroke-linecap="round"/><circle cx="45" cy="45" r="8" fill="url(#bizGold${gid})"/>`,
+    `<path d="M16 25h32v24H16z" fill="#17233b" stroke="url(#bizGold${gid})" stroke-width="3"/><path d="M22 25v-5c0-8 20-8 20 0v5" stroke="#ffe7a3" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M32 35v7" stroke="#79e0ff" stroke-width="4" stroke-linecap="round"/>`,
+    `<path d="M18 18h28v34H18z" fill="#f3e2c1"/><path d="M23 25h18M23 32h18M23 39h12" stroke="#7b6a55" stroke-width="2" stroke-linecap="round"/><path d="M42 40l10 10M52 40L42 50" stroke="url(#bizPink${gid})" stroke-width="4" stroke-linecap="round"/>`,
+    `<path d="M32 14l18 8v13c0 12-9 19-18 23-9-4-18-11-18-23V22z" fill="url(#bizBlue${gid})" stroke="url(#bizGold${gid})" stroke-width="3"/><path d="M23 35l6 6 13-15" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round"/>`,
+    `<path d="M16 20h32v28H16z" fill="#f3e2c1" stroke="url(#bizGold${gid})" stroke-width="3"/><path d="M21 29h22M21 36h18" stroke="#7b6a55" stroke-width="2" stroke-linecap="round"/><path d="M47 19l8 8-17 17-8 2 2-8z" fill="url(#bizBlue${gid})"/>`,
+    `<path d="M20 14h24v36H20z" fill="#f3e2c1"/><path d="M25 22h14M25 29h14M25 36h10" stroke="#7b6a55" stroke-width="2" stroke-linecap="round"/><circle cx="43" cy="45" r="9" fill="url(#bizGold${gid})"/><path d="M39 45l3 3 6-7" stroke="#17233b" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+    `<path d="M18 47h28" stroke="url(#bizGold${gid})" stroke-width="5" stroke-linecap="round"/><path d="M24 36l14-14 8 8-14 14z" fill="#6d391c"/><path d="M36 20l5-5 8 8-5 5z" fill="url(#bizGold${gid})"/><path d="M18 51h32" stroke="#fff1d3" stroke-width="3" stroke-linecap="round"/>`,
+    `<path d="M18 17h28v38H18z" fill="#13233d" stroke="url(#bizGold${gid})" stroke-width="3"/><path d="M24 25h16M24 32h16M24 39h16" stroke="#79e0ff" stroke-width="3" stroke-linecap="round"/><path d="M42 50c5-2 8-6 8-12" stroke="url(#bizGreen${gid})" stroke-width="4" fill="none" stroke-linecap="round"/>`,
+    `<path d="M32 14l17 8v13c0 12-8 18-17 22-9-4-17-10-17-22V22z" fill="#17233b" stroke="url(#bizGold${gid})" stroke-width="3"/><path d="M25 32h14M32 25v22" stroke="#ffe7a3" stroke-width="4" stroke-linecap="round"/><path d="M21 41h22" stroke="#79e0ff" stroke-width="3" stroke-linecap="round"/>`
+  ];
+
+  const special = [
+    `<circle cx="34" cy="34" r="18" fill="none" stroke="#224b83" stroke-width="2"/><circle cx="34" cy="34" r="11" fill="none" stroke="#2c78c8" stroke-width="2"/><path d="M19 48l26-26" stroke="#79e0ff" stroke-width="3" stroke-linecap="round"/><path d="M20 49c9-1 21-7 30-21" stroke="url(#bizGold${gid})" stroke-width="2" fill="none" stroke-linecap="round"/>`,
+    `<path d="M17 42l20-20 10 10-20 20z" fill="url(#bizBlue${gid})"/><path d="M39 18l7-7 7 7-7 7z" fill="url(#bizGold${gid})"/><path d="M21 46l-8 8" stroke="#ffe7a3" stroke-width="4" stroke-linecap="round"/><circle cx="45" cy="31" r="4" fill="#79e0ff"/>`,
+    `<rect x="16" y="20" width="34" height="28" rx="8" fill="#17233b" stroke="url(#bizGold${gid})" stroke-width="3"/><path d="M23 34h18" stroke="#79e0ff" stroke-width="3" stroke-linecap="round"/><circle cx="28" cy="28" r="4" fill="url(#bizGreen${gid})"/><path d="M43 43l8 8" stroke="#ffe7a3" stroke-width="4" stroke-linecap="round"/>`,
+    `<path d="M14 34c12-18 24-18 36 0-12 18-24 18-36 0z" fill="url(#bizBlue${gid})"/><circle cx="32" cy="34" r="9" fill="#101a2d"/><circle cx="32" cy="34" r="4" fill="#79e0ff"/><path d="M47 19l6-6M51 22l7-2" stroke="url(#bizGold${gid})" stroke-width="3" stroke-linecap="round"/>`,
+    `<path d="M18 48h28v8H18z" fill="#17233b"/><path d="M24 48l8-30 8 30" fill="url(#bizGold${gid})"/><path d="M17 30c10-12 20-12 30 0" stroke="#79e0ff" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="32" cy="18" r="5" fill="#ffe7a3"/>`,
+    `<path d="M32 15l7 14 15 2-11 11 3 15-14-7-14 7 3-15-11-11 15-2z" fill="url(#bizGold${gid})"/><path d="M24 36h16" stroke="#17233b" stroke-width="4" stroke-linecap="round"/>`,
+    `<rect x="17" y="20" width="30" height="34" rx="7" fill="#17233b" stroke="url(#bizGold${gid})" stroke-width="3"/><rect x="23" y="26" width="18" height="12" rx="3" fill="url(#bizBlue${gid})"/><circle cx="27" cy="46" r="3" fill="#ffe7a3"/><circle cx="37" cy="46" r="3" fill="#79e0ff"/>`,
+    `<circle cx="32" cy="32" r="18" fill="#13233d" stroke="url(#bizGold${gid})" stroke-width="3"/><path d="M20 32h24M32 20v24" stroke="#79e0ff" stroke-width="3" stroke-linecap="round"/><circle cx="44" cy="20" r="5" fill="url(#bizPink${gid})"/><circle cx="22" cy="44" r="5" fill="url(#bizGreen${gid})"/>`,
+    `<path d="M16 40h32v12H16z" fill="#17233b"/><path d="M23 40l9-22 9 22" fill="url(#bizBlue${gid})"/><path d="M26 48h12" stroke="#ffe7a3" stroke-width="3" stroke-linecap="round"/><path d="M20 25l24 24" stroke="url(#bizGold${gid})" stroke-width="2" stroke-linecap="round"/>`,
+    `<path d="M15 25h34v26H15z" fill="#13233d" stroke="url(#bizGold${gid})" stroke-width="3"/><path d="M21 34h22M21 42h16" stroke="#79e0ff" stroke-width="3" stroke-linecap="round"/><path d="M43 20l8 8-8 8" stroke="url(#bizPink${gid})" stroke-width="4" fill="none" stroke-linecap="round"/>`,
+    `<path d="M19 43c0-15 26-15 26 0v9H19z" fill="#17233b" stroke="url(#bizGold${gid})" stroke-width="3"/><circle cx="32" cy="27" r="11" fill="url(#bizBlue${gid})"/><path d="M27 27h10M32 22v10" stroke="#fff" stroke-width="3" stroke-linecap="round"/>`,
+    `<path d="M15 35h34l-5 17H20z" fill="#17233b"/><path d="M22 35l10-18 10 18" fill="url(#bizGold${gid})"/><path d="M27 45h10" stroke="#79e0ff" stroke-width="3" stroke-linecap="round"/><circle cx="49" cy="20" r="5" fill="url(#bizPink${gid})"/>`
+  ];
+
+  const packs = { markets, pr, legal, special };
+  const pack = packs[type] || markets;
+  const icon = pack[variant] || pack[0];
+
+  return `<svg viewBox="0 0 64 64" aria-hidden="true">${common}${icon}</svg>`;
 }
 
 function boostLogoSvg(index) {
@@ -1841,4 +1891,3 @@ function boostLogoSvg(index) {
     </svg>`;
 }
 
-els.betaModalClose?.addEventListener("click", closeBetaNotice);
