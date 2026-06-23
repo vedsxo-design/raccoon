@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v23-force-register",
+  appVersion: "v24-polish-stability",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -289,7 +289,8 @@ const els = {
   raccoonHelperBtn: $("#raccoonHelperBtn"),
   helperSoonModal: $("#helperSoonModal"),
   helperSoonClose: $("#helperSoonClose"),
-  tgChannelBtn: $("#tgChannelBtn")
+  tgChannelBtn: $("#tgChannelBtn"),
+  serverStatusBanner: $("#serverStatusBanner")
 };
 
 init();
@@ -297,15 +298,14 @@ init();
 
 function bindRegistrationGuard() {
   const tapTargets = [
-    els.raccoonBtn,
-    els.tapButton,
-    els.raccoon,
-    $("#raccoonBtn"),
-    $("#tapButton"),
-    $(".raccoon")
+    els.tapZone,
+    $("#tapZone"),
+    $(".tap-zone")
   ].filter(Boolean);
 
-  tapTargets.forEach((target) => {
+  const uniqueTargets = [...new Set(tapTargets)];
+
+  uniqueTargets.forEach((target) => {
     target.addEventListener("pointerdown", () => {
       if (!firstBackendRegistrationDone) {
         ensureBackendRegistration({ showWarning: true });
@@ -357,7 +357,7 @@ function init() {
 
   setInterval(gameLoop, 1000);
   setInterval(saveState, 5000);
-  setInterval(() => syncTelegramPlayer({ force: true }), 30 * 1000);
+  setInterval(() => syncTelegramPlayer({ force: true, silent: true }), 30 * 1000);
   window.addEventListener("beforeunload", () => {
     applyElapsedProgress(false);
     saveState();
@@ -721,14 +721,35 @@ function bindEnergyCapacityUpgrade() {
   els.energyCapBtn.addEventListener("click", buyEnergyCapacityUpgrade);
 }
 
-function performTap(event) {
+
+function hapticTap(style = "light") {
+  try {
+    window.Telegram?.WebApp?.HapticFeedback?.impactOccurred?.(style);
+  } catch (_) {}
+}
+
+async function performTap(event) {
   applyElapsedProgress(false);
+
+  if (!isBackendConnected()) {
+    const ok = await ensureBackendRegistration({ showWarning: true });
+    if (!ok) {
+      showRegistrationWarning(
+        isTelegramMiniAppReady()
+          ? "Подключаю сервер. Подожди пару секунд и тапни ещё раз."
+          : "Открой игру через Telegram-бота, чтобы прогресс сохранялся."
+      );
+      renderServerStatusBanner();
+      return;
+    }
+  }
 
   if (state.energy < 1) {
     showToast("Энергия закончилась. Подожди немного.");
     return;
   }
 
+  hapticTap("light");
   const tapPower = getTapPower();
   state.coins += tapPower;
   state.totalEarned += tapPower;
@@ -764,6 +785,47 @@ function spawnFloatingText(text, x, y) {
   setTimeout(() => el.remove(), 850);
 }
 
+
+function renderServerStatusBanner() {
+  if (!els.serverStatusBanner) return;
+
+  const status = state.referrals?.backendStatus || "local";
+  const connected = isBackendConnected();
+  const notTelegram = status === "not_telegram";
+  const syncing = status === "syncing";
+  const error = state.referrals?.backendError || "";
+
+  els.serverStatusBanner.classList.toggle("connected", connected);
+  els.serverStatusBanner.classList.toggle("warning", notTelegram || Boolean(error));
+  els.serverStatusBanner.classList.toggle("syncing", syncing);
+
+  const title = connected
+    ? "Сервер подключён"
+    : syncing
+      ? "Синхронизация..."
+      : notTelegram
+        ? "Открой через Telegram-бота"
+        : error
+          ? "Сервер временно недоступен"
+          : "Проверяю сервер...";
+
+  const subtitle = connected
+    ? `ID: ${state.referrals.telegramId || "—"} · прогресс участвует в рейтинге`
+    : notTelegram
+      ? "Иначе игрок не попадёт в users и лидерборд."
+      : error
+        ? "Можно обновить профиль или перезапустить Mini App."
+        : "Прогресс попадёт в лидерборд после синхронизации.";
+
+  els.serverStatusBanner.innerHTML = `
+    <span class="server-dot"></span>
+    <div>
+      <b>${title}</b>
+      <p>${subtitle}</p>
+    </div>
+  `;
+}
+
 function renderAll() {
   cleanExpiredBoosts();
 
@@ -777,6 +839,7 @@ function renderAll() {
   els.ownedBusinessesValue.textContent = formatNumber(getOwnedLevels());
   renderPlayerLevel();
   renderEnergyCapacityUpgrade();
+  renderServerStatusBanner();
 
   renderActiveBoosts();
 
@@ -1060,24 +1123,28 @@ async function syncTelegramPlayer(options = {}) {
   }
   lastManualSyncAt = now;
 
-  state.referrals.backendStatus = "syncing";
-  state.referrals.backendError = "";
-  state.leaderboard = {
-    ...structuredClone(defaultState.leaderboard),
-    ...(state.leaderboard || {}),
-    status: "syncing",
-    error: ""
-  };
-  renderReferralsIfOpen();
-  renderLeaderboardIfOpen();
-  renderProfileIfOpen();
+  if (!options.silent) {
+    state.referrals.backendStatus = "syncing";
+    state.referrals.backendError = "";
+    state.leaderboard = {
+      ...structuredClone(defaultState.leaderboard),
+      ...(state.leaderboard || {}),
+      status: "syncing",
+      error: ""
+    };
+    renderReferralsIfOpen();
+    renderLeaderboardIfOpen();
+    renderProfileIfOpen();
+    renderServerStatusBanner();
+  }
 
   try {
     const data = await callGameBackend({ action: "sync" });
-    applyBackendPlayerData(data, options);
+    applyBackendPlayerData(data, { silent: true });
   } catch (error) {
     console.warn("Backend sync failed:", error);
     setBackendError(error);
+    renderServerStatusBanner();
   }
 }
 
@@ -1150,13 +1217,13 @@ function applyBackendPlayerData(data, options = {}) {
     }, 300);
   } else {
     // Regular sync while the player is in the game can still credit passive income,
-    // but it must not open the AFK modal every 30 seconds.
+    // but it must not open the AFK modal or spam toasts every 30 seconds.
     if (!options.showServerAfk) {
       pendingAfkModalFromBackground = false;
       pendingAfkMeasuredSeconds = 0;
     }
 
-    if (balanceDelta > 0 && balanceDelta >= 1000) {
+    if (!options.silent && balanceDelta > 0 && balanceDelta >= 1000) {
       setTimeout(() => {
         showToast(`Баланс обновлён: +${formatNumber(balanceDelta)} RCT.`);
         spawnFloatingText(`+${formatNumber(balanceDelta)}`, window.innerWidth / 2, 160);
@@ -1164,7 +1231,7 @@ function applyBackendPlayerData(data, options = {}) {
     }
   }
 
-  if (data.referral_reward_given) {
+  if (data.referral_reward_given && !options.silent) {
     setTimeout(() => {
       showToast("Приглашение засчитано. Бонус получит пригласивший игрок.");
     }, 450);
@@ -1172,6 +1239,7 @@ function applyBackendPlayerData(data, options = {}) {
 
   applyBackendLeaderboardData(data);
 
+  renderServerStatusBanner();
   saveState();
   renderAll();
 }
@@ -1757,12 +1825,13 @@ async function buyBusinessLevel(businessId) {
       businessId
     });
 
-    applyBackendPlayerData(data, options);
+    applyBackendPlayerData(data, { silent: true });
 
     const purchase = data.purchase || {};
     const nextLevel = Number(purchase.level || getBusinessLevel(businessId));
     const cooldownMs = Number(purchase.cooldown_ms || 0);
 
+    hapticTap("medium");
     showToast(`${business.name} улучшен до ${nextLevel} уровня${cooldownMs > 0 ? `. КД: ${formatLongTime(cooldownMs)}.` : "."}`);
   } catch (error) {
     console.warn("Business purchase failed:", error);

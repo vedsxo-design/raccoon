@@ -1735,3 +1735,145 @@ h2 {
     width: 100%;
   }
 }
+
+
+/* v24 polish: server status and calmer UI */
+.server-status-banner {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 11px 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .075);
+  border: 1px solid rgba(255, 255, 255, .10);
+}
+
+.server-status-banner b {
+  display: block;
+  font-size: 13px;
+}
+
+.server-status-banner p {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.server-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #f0a735;
+  box-shadow: 0 0 0 5px rgba(240, 167, 53, .12);
+}
+
+.server-status-banner.connected .server-dot {
+  background: var(--good);
+  box-shadow: 0 0 0 5px rgba(128, 242, 166, .13);
+}
+
+.server-status-banner.warning .server-dot {
+  background: var(--danger);
+  box-shadow: 0 0 0 5px rgba(255, 119, 119, .13);
+}
+
+.server-status-banner.syncing .server-dot {
+  animation: serverPulse 1s ease-in-out infinite;
+}
+
+@keyframes serverPulse {
+  50% { transform: scale(1.25); opacity: .62; }
+}
+
+.hero-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-card::before {
+  content: "";
+  position: absolute;
+  inset: -80px -80px auto auto;
+  width: 170px;
+  height: 170px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(121, 224, 255, .18), transparent 64%);
+  pointer-events: none;
+}
+
+.tap-zone::after {
+  content: "TAP";
+  position: absolute;
+  z-index: 3;
+  bottom: 19px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border-radius: 999px;
+  color: #271a06;
+  font-size: 12px;
+  font-weight: 1000;
+  letter-spacing: .08em;
+  background: linear-gradient(145deg, #ffe7a3, #f0a735);
+  box-shadow: 0 12px 25px rgba(247, 185, 85, .22);
+  opacity: .92;
+}
+
+.business-card,
+.boost-card,
+.profile-card,
+.referral-hero,
+.referral-link-card,
+.leaderboard-hero {
+  transition: transform .16s ease, border-color .16s ease, background .16s ease;
+}
+
+.business-card:active,
+.boost-card:active,
+.profile-card:active {
+  transform: scale(.992);
+}
+
+.buy-btn:disabled,
+.boost-btn:disabled {
+  opacity: .52;
+  filter: grayscale(.24);
+}
+
+.bottom-nav {
+  grid-template-columns: repeat(7, minmax(42px, 1fr));
+}
+
+.nav-btn {
+  transition: transform .15s ease, background .15s ease, color .15s ease;
+}
+
+.nav-btn:active {
+  transform: translateY(1px);
+}
+
+.toast {
+  max-width: min(92vw, 420px);
+  text-align: center;
+}
+
+@media (max-width: 430px) {
+  .brand span {
+    display: none;
+  }
+
+  .support-project-btn {
+    max-width: 128px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tap-zone {
+    width: min(82vw, 320px);
+    height: min(82vw, 320px);
+    margin-top: 16px;
+  }
+}
