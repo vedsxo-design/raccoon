@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v21-server-afk-modal-fix",
+  appVersion: "v22-afk-modal-strict",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -10,6 +10,7 @@ const CONFIG = {
   energyCapacityCooldownBaseSeconds: 2 * 60,
   energyCapacityCooldownMaxSeconds: 60 * 60,
   maxOfflineSeconds: 60 * 60 * 12,
+  minAfkModalSeconds: 3 * 60,
   businessMaxLevel: 100,
   businessCooldownBaseSeconds: 60,
   businessCooldownMaxSeconds: 6 * 60 * 60,
@@ -211,6 +212,7 @@ let backendActionBusy = false;
 let lastManualSyncAt = 0;
 let betaNoticePending = false;
 let pendingAfkModalFromBackground = false;
+let pendingAfkMeasuredSeconds = 0;
 let supportProjectBusy = false;
 
 const $ = (selector) => document.querySelector(selector);
@@ -291,6 +293,7 @@ const els = {
 init();
 
 function init() {
+  console.info("Raccoon Tap loaded:", CONFIG.appVersion);
   initTelegramApp();
   ensureReferralState();
   ensureLeaderboardState();
@@ -340,9 +343,11 @@ function init() {
 
     const awaySeconds = Math.max(0, Math.floor((Date.now() - Number(state.lastTick || Date.now())) / 1000));
 
-    if (awaySeconds > 60) {
+    if (awaySeconds >= Number(CONFIG.minAfkModalSeconds || 180)) {
       applyElapsedProgress(true);
     } else {
+      pendingAfkModalFromBackground = false;
+      pendingAfkMeasuredSeconds = 0;
       applyElapsedProgress(false);
       syncTelegramPlayer({ force: true });
     }
@@ -412,8 +417,7 @@ function applyElapsedProgress(showOffline) {
 
   const elapsedSeconds = Math.min(elapsedSecondsRaw, CONFIG.maxOfflineSeconds);
 
-  // v21: AFK/passive RCT is calculated only on backend.
-  // The client may only restore energy locally for smoother UI.
+  // v22: backend начисляет RCT, клиент только восстанавливает энергию для плавного UI.
   state.energy = Math.min(
     getMaxEnergy(),
     (state.energy || 0) + CONFIG.energyRegenPerSecond * elapsedSeconds
@@ -427,11 +431,18 @@ function applyElapsedProgress(showOffline) {
     saveState();
   }
 
-  if (showOffline && elapsedSecondsRaw > 15) {
-    // Show AFK modal only after a real return from background/offline.
-    // Regular 30-second syncs must not open this modal.
+  const minAfkSeconds = Number(CONFIG.minAfkModalSeconds || 180);
+
+  if (showOffline && elapsedSecondsRaw >= minAfkSeconds) {
+    // Окно показываем только после реального долгого ухода из игры.
+    // 20-30 секунд обычного sync / Telegram visibility glitch больше не откроют модалку.
     pendingAfkModalFromBackground = true;
-    syncTelegramPlayer({ force: true, showServerAfk: true });
+    pendingAfkMeasuredSeconds = elapsedSecondsRaw;
+    syncTelegramPlayer({ force: true, showServerAfk: true, measuredAwaySeconds: elapsedSecondsRaw });
+  } else if (showOffline) {
+    pendingAfkModalFromBackground = false;
+    pendingAfkMeasuredSeconds = 0;
+    syncTelegramPlayer({ force: true, showServerAfk: false });
   }
 }
 
@@ -1018,14 +1029,21 @@ function applyBackendPlayerData(data, options = {}) {
 
   const serverAfkReward = Math.max(0, Number(user.last_server_afk_reward || 0));
   const serverAfkSeconds = Math.max(0, Number(user.last_server_afk_seconds || 0));
+  const measuredAwaySeconds = Math.max(
+    0,
+    Number(options.measuredAwaySeconds || pendingAfkMeasuredSeconds || 0)
+  );
+  const minAfkSeconds = Number(CONFIG.minAfkModalSeconds || 180);
   const shouldShowAfkModal =
     Boolean(options.showServerAfk) &&
     pendingAfkModalFromBackground &&
+    measuredAwaySeconds >= minAfkSeconds &&
     serverAfkReward > 0 &&
-    serverAfkSeconds > 60;
+    serverAfkSeconds >= minAfkSeconds;
 
   if (shouldShowAfkModal) {
     pendingAfkModalFromBackground = false;
+    pendingAfkMeasuredSeconds = 0;
 
     setTimeout(() => {
       const elapsedText = formatElapsedShort(serverAfkSeconds);
@@ -1041,6 +1059,7 @@ function applyBackendPlayerData(data, options = {}) {
     // but it must not open the AFK modal every 30 seconds.
     if (!options.showServerAfk) {
       pendingAfkModalFromBackground = false;
+      pendingAfkMeasuredSeconds = 0;
     }
 
     if (balanceDelta > 0 && balanceDelta >= 1000) {
