@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v33-business-modal-center-outside-close",
+  appVersion: "v34-business-modal-visual-center",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
