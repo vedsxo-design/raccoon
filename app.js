@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v32-business-modal-lock",
+  appVersion: "v33-business-modal-center-outside-close",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -566,6 +566,13 @@ function bindNavigation() {
   document.querySelectorAll(".nav-btn").forEach((button) => {
     button.addEventListener("click", () => {
       const screen = button.dataset.screen;
+
+      // Если открыта карточка покупки/улучшения бизнеса, закрываем её ДО смены вкладки.
+      // Иначе body остаётся в состоянии business-modal-open, и новая вкладка не листается.
+      if (selectedBusinessId || isBusinessSheetOpen() || document.body.classList.contains("business-modal-open")) {
+        closeBusinessSheet({ rerender: false });
+      }
+
       document.querySelectorAll(".nav-btn").forEach((btn) => btn.classList.remove("active"));
       document.querySelectorAll(".screen").forEach((section) => section.classList.remove("active"));
       button.classList.add("active");
@@ -1962,6 +1969,7 @@ function renderCategoryTabs() {
     button.textContent = category.name;
     button.addEventListener("click", () => {
       activeCategoryId = category.id;
+      closeBusinessSheet({ rerender: false });
       selectedBusinessId = "";
       lastBusinessListSignature = "";
       renderCategoryTabs();
@@ -2083,11 +2091,6 @@ function getEnergyCapacityCooldownSeconds(nextLevel) {
 
 
 let businessModalScrollY = 0;
-let businessModalLastPoint = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-
-function clampNumber(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
 
 function lockBusinessModalScroll() {
   if (document.body.classList.contains("business-modal-open")) return;
@@ -2107,28 +2110,41 @@ function unlockBusinessModalScroll() {
   window.scrollTo(0, businessModalScrollY);
 }
 
-function setBusinessModalPoint(event) {
-  const point = event?.touches?.[0] || event?.changedTouches?.[0] || event;
-  const viewportWidth = window.innerWidth || 390;
-  const viewportHeight = window.innerHeight || 720;
+function isBusinessSheetOpen() {
+  return Boolean(els.businessSheet && !els.businessSheet.classList.contains("hidden"));
+}
 
-  const rawX = Number(point?.clientX || viewportWidth / 2);
-  const rawY = Number(point?.clientY || viewportHeight / 2);
-
-  businessModalLastPoint = {
-    x: clampNumber(rawX, 24, viewportWidth - 24),
-    y: clampNumber(rawY, 180, viewportHeight - 170)
-  };
-
-  if (els.businessSheet) {
-    els.businessSheet.style.setProperty("--modal-x", `${businessModalLastPoint.x}px`);
-    els.businessSheet.style.setProperty("--modal-y", `${businessModalLastPoint.y}px`);
-  }
+function isInsideBusinessSheetPanel(event) {
+  return Boolean(event?.target?.closest?.(".business-sheet-panel"));
 }
 
 function preventBusinessModalScroll(event) {
   if (!document.body.classList.contains("business-modal-open")) return;
+
+  // Колесо/свайп вне окна теперь не оставляет игрока в заблокированном состоянии:
+  // сначала закрываем покупку, затем браузер снова может нормально листать страницу/вкладку.
+  if (!isInsideBusinessSheetPanel(event)) {
+    closeBusinessSheet({ rerender: true });
+    return;
+  }
+
   event.preventDefault();
+}
+
+function handleBusinessSheetOutsidePointer(event) {
+  if (!isBusinessSheetOpen()) return;
+  if (isInsideBusinessSheetPanel(event)) return;
+
+  // Не глушим событие: если игрок нажал на нижнюю вкладку или раздел бизнесов,
+  // этот же клик продолжит работать после закрытия окна.
+  const passthroughTarget = event.target?.closest?.(".nav-btn, .category-btn, .business-card");
+  closeBusinessSheet({ rerender: !passthroughTarget });
+}
+
+function handleBusinessSheetKeydown(event) {
+  if (event.key === "Escape" && isBusinessSheetOpen()) {
+    closeBusinessSheet({ rerender: true });
+  }
 }
 
 function getSelectedBusiness() {
@@ -2140,7 +2156,6 @@ function selectBusiness(businessId, event) {
   if (!business) return;
 
   selectedBusinessId = business.id;
-  setBusinessModalPoint(event);
   lastBusinessListSignature = "";
   renderBusinesses();
   renderBusinessSheet();
@@ -2197,22 +2212,28 @@ function renderBusinessSheet() {
 }
 
 
-function closeBusinessSheet() {
+function closeBusinessSheet(options = {}) {
+  const { rerender = true } = options;
   selectedBusinessId = "";
   if (els.businessSheet) els.businessSheet.classList.add("hidden");
   unlockBusinessModalScroll();
   lastBusinessListSignature = "";
-  renderBusinesses();
+  if (rerender) renderBusinesses();
 }
 
 function bindBusinessSheet() {
-  els.businessSheetClose?.addEventListener("click", closeBusinessSheet);
+  els.businessSheetClose?.addEventListener("click", () => closeBusinessSheet({ rerender: true }));
 
-  // Пока окно покупки открыто, фон и список бизнесов не прокручиваются.
+  // Клик/тап вне панели закрывает окно. Событие не отменяется,
+  // поэтому нижние вкладки и другие элементы сразу продолжают работать.
+  document.addEventListener("pointerdown", handleBusinessSheetOutsidePointer, true);
+  document.addEventListener("keydown", handleBusinessSheetKeydown);
+
+  // Пока окно покупки открыто, жест внутри панели не прокручивает фон.
+  // Жест вне панели сначала закрывает окно, после чего прокрутка снова доступна.
   document.addEventListener("touchmove", preventBusinessModalScroll, { passive: false });
   document.addEventListener("wheel", preventBusinessModalScroll, { passive: false });
 
-  // Закрытие только по крестику, чтобы игрок случайно не закрыл покупку.
   els.businessSheetBuyBtn?.addEventListener("click", () => {
     const businessId = els.businessSheetBuyBtn?.dataset.business || selectedBusinessId;
     if (businessId) buyBusinessLevel(businessId);

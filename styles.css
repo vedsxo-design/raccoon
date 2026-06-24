@@ -2815,3 +2815,67 @@ body.business-modal-open {
     animation: none;
   }
 }
+
+
+/* v33 fix: centered business modal + safe outside close/pass-through tabs */
+.business-sheet {
+  inset: 0 !important;
+  display: flex;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 16px !important;
+  pointer-events: none;
+  touch-action: auto;
+}
+
+.business-sheet.hidden {
+  display: none !important;
+}
+
+.business-sheet-panel {
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
+  margin: auto;
+  transform: none;
+  width: min(calc(100vw - 24px), 408px) !important;
+  max-height: min(76vh, 560px) !important;
+  pointer-events: auto;
+  touch-action: manipulation;
+  animation: businessPanelCenterIn .16s ease-out !important;
+}
+
+@keyframes businessPanelCenterIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 430px) {
+  .business-sheet {
+    padding: 14px 10px 88px !important;
+  }
+
+  .business-sheet-panel {
+    width: min(calc(100vw - 20px), 390px) !important;
+    max-height: min(74vh, 540px) !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .business-sheet-panel {
+    width: min(calc(100vw - 18px), 340px) !important;
+    max-height: min(72vh, 520px) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .business-sheet-panel {
+    animation: none !important;
+  }
+}
