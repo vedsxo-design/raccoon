@@ -1989,3 +1989,65 @@ h2 {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* v28 performance pass */
+.low-perf *,
+@media (prefers-reduced-motion: reduce) {
+  scroll-behavior: auto !important;
+}
+
+.low-perf .tap-aura,
+.low-perf .coin-orbit,
+.low-perf .beta-sparkles,
+.low-perf .support-sparkles {
+  display: none !important;
+}
+
+.low-perf .float-coin {
+  animation-duration: .42s !important;
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+.low-perf .tap-zone:active .raccoon,
+.low-perf .tap-zone.pressed .raccoon {
+  filter: none !important;
+}
+
+.low-perf .raccoon {
+  filter: none !important;
+  transition: transform .06s ease !important;
+}
+
+.low-perf .glass-card,
+.low-perf .hero-card,
+.low-perf .business-card,
+.low-perf .boost-card,
+.low-perf .profile-card,
+.low-perf .modal-card {
+  backdrop-filter: none !important;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, .26) !important;
+}
+
+.low-perf .business-card,
+.low-perf .boost-card,
+.low-perf .profile-card,
+.low-perf .referral-hero,
+.low-perf .leaderboard-hero {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tap-aura,
+  .coin-orbit,
+  .beta-sparkles,
+  .support-sparkles {
+    display: none !important;
+  }
+
+  .float-coin,
+  .server-status-banner.syncing .server-dot {
+    animation: none !important;
+  }
+}

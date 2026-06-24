@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v27-custom-reset-modal",
+  appVersion: "v28-performance-pass",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -222,6 +222,28 @@ let tapFlushTimer = null;
 let lastFloatingTextAt = 0;
 let floatingTextCount = 0;
 let lastLeaderboardListSignature = "";
+const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches || false;
+const lowHardwareThreads = Number(navigator.hardwareConcurrency || 8) <= 4;
+const lowDeviceMemory = Number(navigator.deviceMemory || 8) <= 4;
+const PERF = {
+  low: prefersReducedMotion || lowHardwareThreads || lowDeviceMemory,
+  floatingTextMinMs: prefersReducedMotion || lowHardwareThreads || lowDeviceMemory ? 220 : 120,
+  floatingTextMax: prefersReducedMotion || lowHardwareThreads || lowDeviceMemory ? 2 : 4,
+  tapHudMinMs: prefersReducedMotion || lowHardwareThreads || lowDeviceMemory ? 90 : 32,
+  fullRenderMinMs: prefersReducedMotion || lowHardwareThreads || lowDeviceMemory ? 2600 : 1400,
+  syncIntervalMs: prefersReducedMotion || lowHardwareThreads || lowDeviceMemory ? 45000 : 30000,
+  tapFlushDelayMs: prefersReducedMotion || lowHardwareThreads || lowDeviceMemory ? 1700 : 1200,
+  hapticMinMs: prefersReducedMotion || lowHardwareThreads || lowDeviceMemory ? 140 : 80
+};
+let lastTapHudRenderAt = 0;
+let tapHudRenderQueued = false;
+let lastFullRenderAt = 0;
+let lastServerBannerSignature = "";
+let lastActiveBoostsSignature = "";
+let lastBusinessListSignature = "";
+let lastBoostListSignature = "";
+let lastHapticAt = 0;
+
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -333,7 +355,8 @@ function scheduleRegistrationHealthCheck() {
 }
 
 function init() {
-  console.info("Raccoon Tap loaded:", CONFIG.appVersion);
+  console.info("Raccoon Tap loaded:", CONFIG.appVersion, "lowPerf:", PERF.low);
+  document.documentElement.classList.toggle("low-perf", PERF.low);
   initTelegramApp();
   ensureReferralState();
   ensureLeaderboardState();
@@ -367,7 +390,7 @@ function init() {
 
   setInterval(gameLoop, 1000);
   setInterval(saveState, 5000);
-  setInterval(() => syncTelegramPlayer({ force: true, silent: true }), 30 * 1000);
+  setInterval(() => syncTelegramPlayer({ force: true, silent: true }), PERF.syncIntervalMs);
   window.addEventListener("beforeunload", () => {
     applyElapsedProgress(false);
     saveState();
@@ -397,7 +420,8 @@ function init() {
     }
 
     saveState();
-    renderAll();
+    renderTapHud();
+    renderServerStatusBanner();
   });
 }
 
@@ -441,9 +465,26 @@ function saveState() {
 function gameLoop() {
   applyElapsedProgress(false);
 
-  const nowSecond = Math.floor(Date.now() / 1000);
-  if (nowSecond !== lastRenderSecond) {
-    lastRenderSecond = nowSecond;
+  const now = Date.now();
+  const nowSecond = Math.floor(now / 1000);
+  if (nowSecond === lastRenderSecond) return;
+
+  lastRenderSecond = nowSecond;
+
+  // Lightweight tick: do not rebuild all cards every second.
+  renderTapHud();
+  renderActiveBoosts();
+  renderEnergyCapacityUpgrade();
+  renderServerStatusBanner();
+
+  const activeHeavyScreen =
+    $("#screen-businesses")?.classList.contains("active") ||
+    $("#screen-boosts")?.classList.contains("active") ||
+    $("#screen-leaderboard")?.classList.contains("active") ||
+    $("#screen-profile")?.classList.contains("active");
+
+  if (activeHeavyScreen && now - lastFullRenderAt >= PERF.fullRenderMinMs) {
+    lastFullRenderAt = now;
     renderAll();
   }
 }
@@ -516,6 +557,8 @@ function bindNavigation() {
       document.querySelectorAll(".screen").forEach((section) => section.classList.remove("active"));
       button.classList.add("active");
       $(`#screen-${screen}`).classList.add("active");
+      lastBusinessListSignature = "";
+      lastBoostListSignature = "";
       renderAll();
     });
   });
@@ -785,6 +828,12 @@ function bindEnergyCapacityUpgrade() {
 
 
 function hapticTap(style = "light") {
+  if (PERF.low && style === "light") return;
+
+  const now = Date.now();
+  if (now - lastHapticAt < PERF.hapticMinMs) return;
+  lastHapticAt = now;
+
   try {
     window.Telegram?.WebApp?.HapticFeedback?.impactOccurred?.(style);
   } catch (_) {}
@@ -803,7 +852,7 @@ function queueServerTap(count = 1) {
     tapFlushTimer = setTimeout(() => {
       tapFlushTimer = null;
       flushServerTaps({ silent: true });
-    }, 1200);
+    }, PERF.tapFlushDelayMs);
   }
 }
 
@@ -843,6 +892,21 @@ async function flushServerTaps(options = {}) {
   }
 }
 
+
+function scheduleTapHudRender() {
+  const now = Date.now();
+
+  if (tapHudRenderQueued) return;
+  if (now - lastTapHudRenderAt < PERF.tapHudMinMs) return;
+
+  tapHudRenderQueued = true;
+  requestAnimationFrame(() => {
+    tapHudRenderQueued = false;
+    lastTapHudRenderAt = Date.now();
+    renderTapHud();
+  });
+}
+
 async function performTap(event) {
   applyElapsedProgress(false);
 
@@ -877,7 +941,7 @@ async function performTap(event) {
 
   const point = getEventPoint(event);
   spawnFloatingText(`+${formatNumber(tapPower)}`, point.x, point.y);
-  renderTapHud();
+  scheduleTapHudRender();
 }
 
 function getEventPoint(event) {
@@ -893,7 +957,7 @@ function getEventPoint(event) {
 
 function spawnFloatingText(text, x, y) {
   const now = Date.now();
-  if (now - lastFloatingTextAt < 70 || floatingTextCount >= 8) return;
+  if (now - lastFloatingTextAt < PERF.floatingTextMinMs || floatingTextCount >= PERF.floatingTextMax) return;
   lastFloatingTextAt = now;
   floatingTextCount += 1;
 
@@ -906,7 +970,7 @@ function spawnFloatingText(text, x, y) {
   setTimeout(() => {
     el.remove();
     floatingTextCount = Math.max(0, floatingTextCount - 1);
-  }, 650);
+  }, PERF.low ? 480 : 650);
 }
 
 
@@ -918,10 +982,6 @@ function renderServerStatusBanner() {
   const notTelegram = status === "not_telegram";
   const syncing = status === "syncing";
   const error = state.referrals?.backendError || "";
-
-  els.serverStatusBanner.classList.toggle("connected", connected);
-  els.serverStatusBanner.classList.toggle("warning", notTelegram || Boolean(error));
-  els.serverStatusBanner.classList.toggle("syncing", syncing);
 
   const title = connected
     ? "Сервер подключён"
@@ -940,6 +1000,14 @@ function renderServerStatusBanner() {
       : error
         ? "Можно обновить профиль или перезапустить Mini App."
         : "Прогресс попадёт в лидерборд после синхронизации.";
+
+  const signature = `${status}|${connected}|${notTelegram}|${syncing}|${Boolean(error)}|${title}|${subtitle}`;
+  if (signature === lastServerBannerSignature) return;
+  lastServerBannerSignature = signature;
+
+  els.serverStatusBanner.classList.toggle("connected", connected);
+  els.serverStatusBanner.classList.toggle("warning", notTelegram || Boolean(error));
+  els.serverStatusBanner.classList.toggle("syncing", syncing);
 
   els.serverStatusBanner.innerHTML = `
     <span class="server-dot"></span>
@@ -1419,6 +1487,16 @@ function applyBackendPlayerData(data, options = {}) {
 
   renderServerStatusBanner();
   saveState();
+
+  if (options.silent) {
+    scheduleTapHudRender();
+    renderActiveBoosts();
+    if ($("#screen-leaderboard")?.classList.contains("active")) renderLeaderboard();
+    return;
+  }
+
+  lastBusinessListSignature = "";
+  lastBoostListSignature = "";
   renderAll();
 }
 
@@ -1921,6 +1999,21 @@ function renderBusinesses() {
   const category = categories.find((item) => item.id === activeCategoryId) || categories[0];
   els.categoryNameValue.textContent = category.name;
   els.categoryProfitValue.textContent = `${formatNumber(getCategoryProfitPerHour(category.id))}/час`;
+
+  const businessSignature = JSON.stringify([
+    activeCategoryId,
+    backendActionBusy,
+    isTelegramMiniAppReady(),
+    category.businesses.map((business) => {
+      const level = getBusinessLevel(business.id);
+      const nextCost = getBusinessNextCost(business);
+      const cooldownLeft = Math.ceil(getBusinessCooldownLeft(business.id) / 1000);
+      return [business.id, level, state.coins >= nextCost, cooldownLeft];
+    })
+  ]);
+
+  if (businessSignature === lastBusinessListSignature) return;
+  lastBusinessListSignature = businessSignature;
   els.businessList.innerHTML = "";
 
   category.businesses.forEach((business) => {
@@ -2060,6 +2153,17 @@ async function buyBusinessLevel(businessId) {
 }
 
 function renderBoosts() {
+  const boostSignature = JSON.stringify([
+    backendActionBusy,
+    boosts.map((boost) => {
+      const active = getActiveBoost(boost.id);
+      const cooldownLeft = Math.ceil(getBoostCooldownLeft(boost.id) / 1000);
+      return [boost.id, Boolean(active), active ? Math.ceil((active.endsAt - Date.now()) / 1000) : 0, cooldownLeft];
+    })
+  ]);
+
+  if (boostSignature === lastBoostListSignature) return;
+  lastBoostListSignature = boostSignature;
   els.boostList.innerHTML = "";
 
   boosts.forEach((boost, index) => {
@@ -2145,6 +2249,8 @@ function renderActiveBoosts() {
     })
     .join("");
 
+  if (active === lastActiveBoostsSignature) return;
+  lastActiveBoostsSignature = active;
   els.activeBoosts.innerHTML = active || "";
 }
 
