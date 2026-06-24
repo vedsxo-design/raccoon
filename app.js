@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v25-server-taps-energy",
+  appVersion: "v26-bugfix-perf",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -219,6 +219,9 @@ let supportProjectBusy = false;
 let pendingServerTaps = 0;
 let tapBatchBusy = false;
 let tapFlushTimer = null;
+let lastFloatingTextAt = 0;
+let floatingTextCount = 0;
+let lastLeaderboardListSignature = "";
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -534,40 +537,48 @@ function bindTap() {
 }
 
 function bindReset() {
-  els.resetBtn.addEventListener("click", () => {
-    const ok = confirm("Точно сбросить весь прогресс Raccoon Tap?");
+  els.resetBtn.addEventListener("click", async () => {
+    const ok = confirm("Точно сбросить весь прогресс Raccoon Tap? Баланс, бизнесы, энергия, бусты и тапы будут очищены.");
     if (!ok) return;
 
-    const preservedReferralSync = structuredClone(state.referrals || {});
-    const preservedLeaderboardSync = structuredClone(state.leaderboard || {});
+    if (backendActionBusy) {
+      showToast("Подожди, сейчас идёт синхронизация.");
+      return;
+    }
 
-    localStorage.removeItem(CONFIG.saveKey);
-    state = structuredClone(defaultState);
-    state.referrals = {
-      ...structuredClone(defaultState.referrals),
-      code: preservedReferralSync.code || "",
-      invitedFriends: Number(preservedReferralSync.invitedFriends || 0),
-      rewardsEarned: Number(preservedReferralSync.rewardsEarned || 0),
-      backendEnabled: Boolean(preservedReferralSync.backendEnabled),
-      backendStatus: preservedReferralSync.backendStatus || "local",
-      telegramId: preservedReferralSync.telegramId || "",
-      serverBalance: Number(preservedReferralSync.serverBalance || 0),
-      serverBalanceApplied: Number(preservedReferralSync.serverBalanceApplied || 0),
-      lastSyncAt: Number(preservedReferralSync.lastSyncAt || 0)
-    };
-    state.leaderboard = {
-      ...structuredClone(defaultState.leaderboard),
-      items: Array.isArray(preservedLeaderboardSync.items) ? preservedLeaderboardSync.items : [],
-      myRank: preservedLeaderboardSync.myRank || null,
-      myProfitPerHour: Number(preservedLeaderboardSync.myProfitPerHour || 0),
-      status: preservedLeaderboardSync.status || "idle",
-      lastSyncAt: Number(preservedLeaderboardSync.lastSyncAt || 0)
-    };
-    activeCategoryId = "markets";
-    saveState();
-    renderAll();
-    syncTelegramPlayer({ force: true });
-    showToast("Локальный прогресс очищен. Серверные данные снова подтянутся из Supabase.");
+    backendActionBusy = true;
+    els.resetBtn.disabled = true;
+
+    try {
+      pendingServerTaps = 0;
+      if (tapFlushTimer) {
+        clearTimeout(tapFlushTimer);
+        tapFlushTimer = null;
+      }
+
+      if (isTelegramMiniAppReady()) {
+        const data = await callGameBackend({ action: "reset_progress", skipTapFlush: true });
+        localStorage.removeItem(CONFIG.saveKey);
+        state = structuredClone(defaultState);
+        applyBackendPlayerData(data, { silent: true });
+      } else {
+        localStorage.removeItem(CONFIG.saveKey);
+        state = structuredClone(defaultState);
+        saveState();
+        renderAll();
+      }
+
+      activeCategoryId = "markets";
+      showToast("Прогресс полностью сброшен.");
+    } catch (error) {
+      console.warn("Reset failed:", error);
+      showToast(String(error?.message || error));
+      setBackendError(error);
+    } finally {
+      backendActionBusy = false;
+      els.resetBtn.disabled = false;
+      renderAll();
+    }
   });
 }
 
@@ -755,8 +766,6 @@ async function flushServerTaps(options = {}) {
   tapBatchBusy = true;
 
   try {
-    await flushServerTaps({ silent: true });
-
     const data = await callGameBackend({
       action: "tap_batch",
       taps: tapsToSend,
@@ -820,7 +829,7 @@ async function performTap(event) {
 
   const point = getEventPoint(event);
   spawnFloatingText(`+${formatNumber(tapPower)}`, point.x, point.y);
-  renderAll();
+  renderTapHud();
 }
 
 function getEventPoint(event) {
@@ -835,13 +844,21 @@ function getEventPoint(event) {
 }
 
 function spawnFloatingText(text, x, y) {
+  const now = Date.now();
+  if (now - lastFloatingTextAt < 70 || floatingTextCount >= 8) return;
+  lastFloatingTextAt = now;
+  floatingTextCount += 1;
+
   const el = document.createElement("div");
   el.className = "float-coin";
   el.textContent = text;
   el.style.left = `${x - 18 + Math.random() * 36}px`;
   el.style.top = `${y - 18}px`;
   els.floatingLayer.appendChild(el);
-  setTimeout(() => el.remove(), 850);
+  setTimeout(() => {
+    el.remove();
+    floatingTextCount = Math.max(0, floatingTextCount - 1);
+  }, 650);
 }
 
 
@@ -869,7 +886,7 @@ function renderServerStatusBanner() {
           : "Проверяю сервер...";
 
   const subtitle = connected
-    ? `ID: ${state.referrals.telegramId || "—"} · прогресс участвует в рейтинге`
+    ? `Прогресс сохраняется и участвует в рейтинге`
     : notTelegram
       ? "Иначе игрок не попадёт в users и лидерборд."
       : error
@@ -883,6 +900,17 @@ function renderServerStatusBanner() {
       <p>${subtitle}</p>
     </div>
   `;
+}
+
+
+function renderTapHud() {
+  const maxEnergy = getMaxEnergy();
+  els.coinsValue.textContent = formatNumber(state.coins);
+  els.tapPowerValue.textContent = `+${formatNumber(getTapPower())}`;
+  els.energyValue.textContent = formatNumber(Math.floor(state.energy));
+  els.maxEnergyValue.textContent = formatNumber(maxEnergy);
+  els.energyBar.style.width = `${Math.max(0, Math.min(100, (state.energy / maxEnergy) * 100))}%`;
+  renderPlayerLevel();
 }
 
 function renderAll() {
@@ -1183,7 +1211,11 @@ async function syncTelegramPlayer(options = {}) {
   lastManualSyncAt = now;
 
   if (pendingServerTaps > 0 && !options.skipTapFlush) {
-    await flushServerTaps({ silent: true });
+    const flushed = await flushServerTaps({ silent: true });
+    if (!flushed && (pendingServerTaps > 0 || tapBatchBusy)) {
+      // Do not pull stale server balance over optimistic local taps.
+      return;
+    }
   }
 
   if (!options.silent) {
@@ -1243,7 +1275,11 @@ function applyBackendPlayerData(data, options = {}) {
     state.businessCooldowns = sanitizeBusinessCooldownsFromServer(user.business_cooldowns);
   }
 
-  state.coins = serverBalance;
+  const source = String(data.source || "");
+  const hasUnflushedTapWork = (pendingServerTaps > 0 || tapBatchBusy) && !source.includes("tap_batch");
+  state.coins = hasUnflushedTapWork
+    ? Math.max(previousLocalBalance, serverBalance)
+    : serverBalance;
 
   if (Number.isFinite(Number(user.server_energy))) {
     state.energy = Math.max(0, Math.min(getMaxEnergy(), Number(user.server_energy)));
@@ -1255,6 +1291,20 @@ function applyBackendPlayerData(data, options = {}) {
 
   if (Number.isFinite(Number(user.energy_capacity_cooldown_end))) {
     state.energyCapacityCooldownEnd = Number(user.energy_capacity_cooldown_end || 0);
+  }
+
+  if (Array.isArray(user.active_boosts)) {
+    state.activeBoosts = user.active_boosts
+      .map((item) => ({ id: String(item.id || ""), endsAt: Number(item.endsAt || 0) }))
+      .filter((item) => boosts.some((boost) => boost.id === item.id) && item.endsAt > Date.now());
+  }
+
+  if (user.boost_cooldowns && typeof user.boost_cooldowns === "object") {
+    state.boostCooldownEnds = Object.fromEntries(
+      Object.entries(user.boost_cooldowns)
+        .map(([id, value]) => [id, Number(value || 0)])
+        .filter(([id, value]) => boosts.some((boost) => boost.id === id) && value > Date.now())
+    );
   }
 
   if (Number.isFinite(Number(user.server_total_taps))) {
@@ -1519,11 +1569,27 @@ function renderLeaderboard() {
 
   const rows = Array.isArray(state.leaderboard.items) ? state.leaderboard.items : [];
   if (!rows.length) {
-    els.leaderboardList.innerHTML = `<div class="leaderboard-empty">${state.leaderboard.status === "syncing" ? "Загружаю топ игроков..." : "Пока нет игроков в рейтинге."}</div>`;
+    const emptySignature = `empty:${state.leaderboard.status}`;
+    if (emptySignature !== lastLeaderboardListSignature) {
+      lastLeaderboardListSignature = emptySignature;
+      els.leaderboardList.innerHTML = `<div class="leaderboard-empty">${state.leaderboard.status === "syncing" ? "Загружаю топ игроков..." : "Пока нет игроков в рейтинге."}</div>`;
+    }
     return;
   }
 
   const currentTelegramId = String(state.referrals?.telegramId || "");
+  const signature = JSON.stringify(rows.map((item, index) => [
+    item.rank || index + 1,
+    item.telegram_id || "",
+    item.display_name || item.first_name || item.public_id || "",
+    item.profit_per_hour || 0,
+    item.total_earned || 0,
+    Boolean(item.is_me)
+  ]));
+
+  if (signature === lastLeaderboardListSignature) return;
+  lastLeaderboardListSignature = signature;
+
   els.leaderboardList.innerHTML = rows.map((item, index) => {
     const rank = Number(item.rank || index + 1);
     const telegramId = String(item.telegram_id || "");
@@ -1753,8 +1819,6 @@ async function buyEnergyCapacityUpgrade() {
   renderEnergyCapacityUpgrade();
 
   try {
-    await flushServerTaps({ silent: true });
-
     const data = await callGameBackend({
       action: "buy_energy_capacity",
     });
@@ -1980,9 +2044,19 @@ function renderBoosts() {
   });
 }
 
-function activateBoost(boostId) {
+async function activateBoost(boostId) {
   const boost = boosts.find((item) => item.id === boostId);
   if (!boost) return;
+
+  if (!isTelegramMiniAppReady()) {
+    showToast("Бусты в бете работают только через Telegram Mini App.");
+    return;
+  }
+
+  if (backendActionBusy) {
+    showToast("Подожди, сервер ещё обрабатывает действие.");
+    return;
+  }
 
   if (getActiveBoost(boostId)) {
     showToast("Этот буст уже активен.");
@@ -1995,15 +2069,23 @@ function activateBoost(boostId) {
     return;
   }
 
-  state.activeBoosts.push({
-    id: boost.id,
-    endsAt: Date.now() + boost.duration * 1000
-  });
-  state.boostCooldownEnds[boost.id] = Date.now() + CONFIG.boostCooldownSeconds * 1000;
-  state.usedBoostDates[boost.id] = getDateKey();
-  saveState();
-  renderAll();
-  showToast(`${boost.name} активирован.`);
+  backendActionBusy = true;
+  renderBoosts();
+
+  try {
+    await flushServerTaps({ silent: true });
+    const data = await callGameBackend({ action: "activate_boost", boostId, skipTapFlush: true });
+    applyBackendPlayerData(data, { silent: true });
+    hapticTap("medium");
+    showToast(`${boost.name} активирован.`);
+  } catch (error) {
+    console.warn("Boost activation failed:", error);
+    showToast(String(error?.message || error));
+    setBackendError(error);
+  } finally {
+    backendActionBusy = false;
+    renderAll();
+  }
 }
 
 function renderActiveBoosts() {
