@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v34-business-modal-visual-center",
+  appVersion: "v35-business-modal-visible-viewport-center",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -2090,6 +2090,52 @@ function getEnergyCapacityCooldownSeconds(nextLevel) {
 
 
 
+function mountBusinessSheetToBody() {
+  // Внутри длинной вкладки position: fixed в некоторых WebView ведёт себя как будто
+  // привязан к странице, а не к видимой области. Переносим модалку в body,
+  // чтобы центр считался от текущего viewport игрока.
+  if (!els.businessSheet) return;
+  if (els.businessSheet.parentElement !== document.body) {
+    document.body.appendChild(els.businessSheet);
+  }
+}
+
+function getBottomNavReservePx(viewportHeight) {
+  const nav = document.querySelector(".bottom-nav");
+  if (!nav) return 0;
+
+  const rect = nav.getBoundingClientRect();
+  if (!rect.width || !rect.height) return 0;
+
+  // Берём реальную высоту занятой нижней зоны: сама навигация + нижний отступ.
+  // Если навигация по какой-то причине не видна, ничего не резервируем.
+  const reserve = viewportHeight - rect.top + 8;
+  return Math.max(0, Math.min(viewportHeight * 0.34, reserve));
+}
+
+function updateBusinessSheetViewportPosition() {
+  if (!els.businessSheet) return;
+
+  const visualViewport = window.visualViewport;
+  const viewportLeft = visualViewport ? visualViewport.offsetLeft : 0;
+  const viewportTop = visualViewport ? visualViewport.offsetTop : 0;
+  const viewportWidth = visualViewport ? visualViewport.width : window.innerWidth;
+  const viewportHeight = visualViewport ? visualViewport.height : window.innerHeight;
+  const bottomReserve = getBottomNavReservePx(viewportHeight);
+  const safeGap = viewportWidth <= 430 ? 12 : 16;
+  const availableHeight = Math.max(220, viewportHeight - bottomReserve - safeGap * 2);
+  const panelCenterY = viewportTop + safeGap + availableHeight / 2;
+
+  els.businessSheet.style.setProperty("--business-modal-left", `${viewportLeft}px`);
+  els.businessSheet.style.setProperty("--business-modal-top", `${viewportTop}px`);
+  els.businessSheet.style.setProperty("--business-modal-width", `${viewportWidth}px`);
+  els.businessSheet.style.setProperty("--business-modal-height", `${viewportHeight}px`);
+  els.businessSheet.style.setProperty("--business-modal-panel-x", `${viewportLeft + viewportWidth / 2}px`);
+  els.businessSheet.style.setProperty("--business-modal-panel-y", `${panelCenterY}px`);
+  els.businessSheet.style.setProperty("--business-modal-panel-max-height", `${availableHeight}px`);
+}
+
+
 let businessModalScrollY = 0;
 
 function lockBusinessModalScroll() {
@@ -2196,7 +2242,10 @@ function renderBusinessSheet() {
             ? `Купить за ${formatNumber(nextCost)} RCT`
             : `Улучшить за ${formatNumber(nextCost)} RCT`;
 
+  mountBusinessSheetToBody();
+  updateBusinessSheetViewportPosition();
   els.businessSheet.classList.remove("hidden");
+  requestAnimationFrame(updateBusinessSheetViewportPosition);
   els.businessSheetLogo.innerHTML = businessHeroLogoSvg(business.logoSeed, business.categoryId);
   els.businessSheetName.textContent = business.name;
   els.businessSheetDesc.textContent = level <= 0
@@ -2222,6 +2271,9 @@ function closeBusinessSheet(options = {}) {
 }
 
 function bindBusinessSheet() {
+  mountBusinessSheetToBody();
+  updateBusinessSheetViewportPosition();
+
   els.businessSheetClose?.addEventListener("click", () => closeBusinessSheet({ rerender: true }));
 
   // Клик/тап вне панели закрывает окно. Событие не отменяется,
@@ -2233,6 +2285,13 @@ function bindBusinessSheet() {
   // Жест вне панели сначала закрывает окно, после чего прокрутка снова доступна.
   document.addEventListener("touchmove", preventBusinessModalScroll, { passive: false });
   document.addEventListener("wheel", preventBusinessModalScroll, { passive: false });
+
+  window.addEventListener("resize", updateBusinessSheetViewportPosition, { passive: true });
+  window.addEventListener("scroll", () => {
+    if (isBusinessSheetOpen()) updateBusinessSheetViewportPosition();
+  }, { passive: true });
+  window.visualViewport?.addEventListener("resize", updateBusinessSheetViewportPosition, { passive: true });
+  window.visualViewport?.addEventListener("scroll", updateBusinessSheetViewportPosition, { passive: true });
 
   els.businessSheetBuyBtn?.addEventListener("click", () => {
     const businessId = els.businessSheetBuyBtn?.dataset.business || selectedBusinessId;

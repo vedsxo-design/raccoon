@@ -2992,3 +2992,41 @@ body.business-modal-open {
     animation: none !important;
   }
 }
+
+
+/* v35 fix: center business modal in the currently visible viewport */
+.business-sheet {
+  position: fixed !important;
+  left: var(--business-modal-left, 0px) !important;
+  top: var(--business-modal-top, 0px) !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: var(--business-modal-width, 100vw) !important;
+  height: var(--business-modal-height, 100dvh) !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.business-sheet-panel {
+  position: fixed !important;
+  left: var(--business-modal-panel-x, 50vw) !important;
+  top: var(--business-modal-panel-y, 50vh) !important;
+  width: min(calc(var(--business-modal-width, 100vw) - 24px), 408px) !important;
+  max-height: min(var(--business-modal-panel-max-height, calc(100dvh - 112px)), 560px) !important;
+  transform: translate(-50%, -50%) !important;
+}
+
+@media (max-width: 430px) {
+  .business-sheet-panel {
+    width: min(calc(var(--business-modal-width, 100vw) - 20px), 390px) !important;
+    max-height: min(var(--business-modal-panel-max-height, calc(100dvh - 104px)), 540px) !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .business-sheet-panel {
+    width: min(calc(var(--business-modal-width, 100vw) - 18px), 340px) !important;
+    max-height: min(var(--business-modal-panel-max-height, calc(100dvh - 98px)), 520px) !important;
+  }
+}
