@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v30-business-ui-rework",
+  appVersion: "v31-business-modal-polish",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -2102,6 +2102,7 @@ function renderBusinessSheet() {
   const business = getSelectedBusiness();
   if (!business) {
     els.businessSheet.classList.add("hidden");
+    document.body.classList.toggle("business-modal-open", false);
     return;
   }
 
@@ -2129,6 +2130,7 @@ function renderBusinessSheet() {
             : `Улучшить за ${formatNumber(nextCost)} RCT`;
 
   els.businessSheet.classList.remove("hidden");
+  document.body.classList.toggle("business-modal-open", true);
   els.businessSheetLogo.innerHTML = businessHeroLogoSvg(business.logoSeed, business.categoryId);
   els.businessSheetName.textContent = business.name;
   els.businessSheetDesc.textContent = level <= 0
@@ -2143,12 +2145,28 @@ function renderBusinessSheet() {
   els.businessSheetBuyBtn.dataset.business = business.id;
 }
 
+
+function closeBusinessSheet() {
+  selectedBusinessId = "";
+  if (els.businessSheet) els.businessSheet.classList.add("hidden");
+  document.body.classList.toggle("business-modal-open", false);
+  lastBusinessListSignature = "";
+  renderBusinesses();
+}
+
 function bindBusinessSheet() {
-  els.businessSheetClose?.addEventListener("click", () => {
-    selectedBusinessId = "";
-    renderBusinessSheet();
-    lastBusinessListSignature = "";
-    renderBusinesses();
+  els.businessSheetClose?.addEventListener("click", closeBusinessSheet);
+
+  els.businessSheet?.addEventListener("click", (event) => {
+    if (event.target === els.businessSheet) {
+      closeBusinessSheet();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !els.businessSheet?.classList.contains("hidden")) {
+      closeBusinessSheet();
+    }
   });
 
   els.businessSheetBuyBtn?.addEventListener("click", () => {
