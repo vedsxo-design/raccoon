@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v28-performance-pass",
+  appVersion: "v29-leaderboard-avatars",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -189,6 +189,7 @@ const defaultState = {
     backendStatus: "local",
     backendError: "",
     telegramId: "",
+    photoUrl: "",
     serverBalance: 0,
     serverBalanceApplied: 0,
     lastSyncAt: 0
@@ -1114,6 +1115,56 @@ function getTelegramUser() {
   return window.Telegram?.WebApp?.initDataUnsafe?.user || null;
 }
 
+
+function sanitizeImageUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:") return "";
+    return url.href.slice(0, 700);
+  } catch (_) {
+    return "";
+  }
+}
+
+function getCurrentTelegramPhotoUrl() {
+  const telegramUser = getTelegramUser();
+  return sanitizeImageUrl(telegramUser?.photo_url || state.referrals?.photoUrl || "");
+}
+
+function getAvatarInitial(value) {
+  const chars = Array.from(String(value || "R").trim());
+  return (chars[0] || "R").toUpperCase();
+}
+
+function getAvatarInnerHtml(photoUrl, fallbackText = "R") {
+  const safePhotoUrl = sanitizeImageUrl(photoUrl);
+  const initial = escapeHtml(getAvatarInitial(fallbackText));
+  const image = safePhotoUrl
+    ? `<img src="${escapeHtml(safePhotoUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">`
+    : "";
+
+  return `<span>${initial}</span>${image}`;
+}
+
+function getLeaderboardPhotoUrl(item) {
+  const itemPhoto = sanitizeImageUrl(item?.photo_url || "");
+
+  if (itemPhoto) return itemPhoto;
+
+  const currentTelegramId = String(state.referrals?.telegramId || "");
+  const itemTelegramId = String(item?.telegram_id || "");
+
+  if (Boolean(item?.is_me) || (currentTelegramId && itemTelegramId && currentTelegramId === itemTelegramId)) {
+    return getCurrentTelegramPhotoUrl();
+  }
+
+  return "";
+}
+
+
 function getIncomingReferralParam() {
   const tg = window.Telegram?.WebApp;
   const urlParams = new URLSearchParams(window.location.search);
@@ -1373,6 +1424,9 @@ function applyBackendPlayerData(data, options = {}) {
   if (backendTelegramId) state.referrals.telegramId = backendTelegramId;
   if (backendReferralCode) state.referrals.code = backendReferralCode;
 
+  const backendPhotoUrl = sanitizeImageUrl(user.photo_url || "");
+  if (backendPhotoUrl) state.referrals.photoUrl = backendPhotoUrl;
+
   state.referrals.invitedFriends = Number(data.invited_count || 0);
 
   const serverBalance = Math.max(0, Number(user.balance || 0));
@@ -1618,7 +1672,12 @@ function renderProfile() {
   const initialsSource = firstName || username || "R";
   const profileInitial = String(initialsSource).trim().slice(0, 1).toUpperCase() || "R";
 
-  if (els.profileAvatarValue) els.profileAvatarValue.textContent = profileInitial;
+  const profilePhotoUrl = getCurrentTelegramPhotoUrl();
+
+  if (els.profileAvatarValue) {
+    els.profileAvatarValue.classList.toggle("has-photo", Boolean(profilePhotoUrl));
+    els.profileAvatarValue.innerHTML = getAvatarInnerHtml(profilePhotoUrl, profileInitial);
+  }
   if (els.profileNameValue) els.profileNameValue.textContent = displayName;
   if (els.profileUsernameValue) {
     els.profileUsernameValue.textContent = username
@@ -1708,6 +1767,7 @@ function renderLeaderboard() {
     item.rank || index + 1,
     item.telegram_id || "",
     item.display_name || item.first_name || item.public_id || "",
+    item.photo_url || "",
     item.profit_per_hour || 0,
     item.total_earned || 0,
     Boolean(item.is_me)
@@ -1719,7 +1779,10 @@ function renderLeaderboard() {
   els.leaderboardList.innerHTML = rows.map((item, index) => {
     const rank = Number(item.rank || index + 1);
     const telegramId = String(item.telegram_id || "");
-    const name = escapeHtml(getLeaderboardDisplayName(item));
+    const rawName = getLeaderboardDisplayName(item);
+    const name = escapeHtml(rawName);
+    const photoUrl = getLeaderboardPhotoUrl(item);
+    const avatarHtml = getAvatarInnerHtml(photoUrl, rawName);
     const profit = formatNumber(item.profit_per_hour || 0);
     const earned = formatNumber(item.total_earned || 0);
     const isMe = Boolean(item.is_me) || (currentTelegramId && telegramId === currentTelegramId);
@@ -1728,9 +1791,12 @@ function renderLeaderboard() {
     return `
       <div class="leaderboard-row${isMe ? " is-me" : ""}">
         <div class="leaderboard-rank">${medal}</div>
-        <div class="leaderboard-player">
-          <b>${name}</b>
-          <span>${earned} RCT всего</span>
+        <div class="leaderboard-identity">
+          <div class="leaderboard-avatar${photoUrl ? " has-photo" : ""}" aria-hidden="true">${avatarHtml}</div>
+          <div class="leaderboard-player">
+            <b>${name}</b>
+            <span>${earned} RCT всего</span>
+          </div>
         </div>
         <div class="leaderboard-profit">${profit}<span>/час</span></div>
       </div>`;
@@ -1758,7 +1824,7 @@ function getLeaderboardStatusText() {
     const syncedAt = state.leaderboard.lastSyncAt
       ? new Date(state.leaderboard.lastSyncAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
       : "только что";
-    return `Топ-100 обновлён. В рейтинг попадают все игроки, а @username в топе скрыт для приватности. Последняя синхронизация: ${syncedAt}.`;
+    return `Топ-100 обновлён. В рейтинге показываются аватарки Telegram, если они доступны; @username скрыт для приватности. Последняя синхронизация: ${syncedAt}.`;
   }
 
   if (status === "syncing") {

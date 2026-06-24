@@ -2051,3 +2051,71 @@ h2 {
     animation: none !important;
   }
 }
+
+
+/* v29 Telegram avatars in leaderboard */
+.leaderboard-identity {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.leaderboard-avatar {
+  position: relative;
+  overflow: hidden;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 15px;
+  color: #271a06;
+  font-size: 16px;
+  font-weight: 1000;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, .55), rgba(255, 255, 255, .08)),
+    linear-gradient(145deg, #ffd886, #f0a735);
+  border: 1px solid rgba(255, 255, 255, .16);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, .22);
+}
+
+.leaderboard-avatar span,
+.profile-avatar span {
+  position: relative;
+  z-index: 1;
+}
+
+.leaderboard-avatar img,
+.profile-avatar img {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.leaderboard-avatar.has-photo span,
+.profile-avatar.has-photo span {
+  display: none;
+}
+
+.profile-avatar {
+  position: relative;
+  overflow: hidden;
+}
+
+@media (max-width: 380px) {
+  .leaderboard-identity {
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .leaderboard-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 14px;
+  }
+}
