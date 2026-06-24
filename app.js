@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v26-bugfix-perf",
+  appVersion: "v27-custom-reset-modal",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -256,6 +256,9 @@ const els = {
   betaModal: $("#betaModal"),
   betaModalClose: $("#betaModalClose"),
   resetBtn: $("#resetBtn"),
+  resetConfirmModal: $("#resetConfirmModal"),
+  resetConfirmBtn: $("#resetConfirmBtn"),
+  resetCancelBtn: $("#resetCancelBtn"),
   supportProjectBtn: $("#supportProjectBtn"),
   supportProjectModal: $("#supportProjectModal"),
   supportProjectClose: $("#supportProjectClose"),
@@ -344,6 +347,7 @@ function init() {
   applyElapsedProgress(true);
   bindNavigation();
   bindTap();
+  bindResetConfirmModal();
   bindReset();
   bindSupportProjectActions();
   bindEnergyCapacityUpgrade();
@@ -536,9 +540,53 @@ function bindTap() {
   });
 }
 
+
+let resetConfirmResolver = null;
+
+function openResetConfirmModal() {
+  if (!els.resetConfirmModal || !els.resetConfirmBtn || !els.resetCancelBtn) {
+    return Promise.resolve(window.confirm("Сбросить весь прогресс Raccoon Tap?"));
+  }
+
+  els.resetConfirmModal.classList.remove("hidden");
+
+  return new Promise((resolve) => {
+    resetConfirmResolver = resolve;
+  });
+}
+
+function closeResetConfirmModal(result = false) {
+  if (els.resetConfirmModal) {
+    els.resetConfirmModal.classList.add("hidden");
+  }
+
+  if (typeof resetConfirmResolver === "function") {
+    const resolver = resetConfirmResolver;
+    resetConfirmResolver = null;
+    resolver(Boolean(result));
+  }
+}
+
+function bindResetConfirmModal() {
+  els.resetConfirmBtn?.addEventListener("click", () => closeResetConfirmModal(true));
+  els.resetCancelBtn?.addEventListener("click", () => closeResetConfirmModal(false));
+
+  els.resetConfirmModal?.addEventListener("click", (event) => {
+    if (event.target === els.resetConfirmModal) {
+      closeResetConfirmModal(false);
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !els.resetConfirmModal?.classList.contains("hidden")) {
+      closeResetConfirmModal(false);
+    }
+  });
+}
+
 function bindReset() {
   els.resetBtn.addEventListener("click", async () => {
-    const ok = confirm("Точно сбросить весь прогресс Raccoon Tap? Баланс, бизнесы, энергия, бусты и тапы будут очищены.");
+    const ok = await openResetConfirmModal();
     if (!ok) return;
 
     if (backendActionBusy) {
