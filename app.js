@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v31-business-modal-polish",
+  appVersion: "v32-business-modal-lock",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -2081,18 +2081,70 @@ function getEnergyCapacityCooldownSeconds(nextLevel) {
 }
 
 
+
+let businessModalScrollY = 0;
+let businessModalLastPoint = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function lockBusinessModalScroll() {
+  if (document.body.classList.contains("business-modal-open")) return;
+
+  businessModalScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+  document.documentElement.classList.add("business-modal-open");
+  document.body.classList.add("business-modal-open");
+  document.body.style.top = `-${businessModalScrollY}px`;
+}
+
+function unlockBusinessModalScroll() {
+  if (!document.body.classList.contains("business-modal-open")) return;
+
+  document.documentElement.classList.remove("business-modal-open");
+  document.body.classList.remove("business-modal-open");
+  document.body.style.top = "";
+  window.scrollTo(0, businessModalScrollY);
+}
+
+function setBusinessModalPoint(event) {
+  const point = event?.touches?.[0] || event?.changedTouches?.[0] || event;
+  const viewportWidth = window.innerWidth || 390;
+  const viewportHeight = window.innerHeight || 720;
+
+  const rawX = Number(point?.clientX || viewportWidth / 2);
+  const rawY = Number(point?.clientY || viewportHeight / 2);
+
+  businessModalLastPoint = {
+    x: clampNumber(rawX, 24, viewportWidth - 24),
+    y: clampNumber(rawY, 180, viewportHeight - 170)
+  };
+
+  if (els.businessSheet) {
+    els.businessSheet.style.setProperty("--modal-x", `${businessModalLastPoint.x}px`);
+    els.businessSheet.style.setProperty("--modal-y", `${businessModalLastPoint.y}px`);
+  }
+}
+
+function preventBusinessModalScroll(event) {
+  if (!document.body.classList.contains("business-modal-open")) return;
+  event.preventDefault();
+}
+
 function getSelectedBusiness() {
   return findBusiness(selectedBusinessId);
 }
 
-function selectBusiness(businessId) {
+function selectBusiness(businessId, event) {
   const business = findBusiness(businessId);
   if (!business) return;
 
   selectedBusinessId = business.id;
+  setBusinessModalPoint(event);
   lastBusinessListSignature = "";
   renderBusinesses();
   renderBusinessSheet();
+  lockBusinessModalScroll();
   hapticTap("light");
 }
 
@@ -2102,7 +2154,7 @@ function renderBusinessSheet() {
   const business = getSelectedBusiness();
   if (!business) {
     els.businessSheet.classList.add("hidden");
-    document.body.classList.toggle("business-modal-open", false);
+    unlockBusinessModalScroll();
     return;
   }
 
@@ -2130,7 +2182,6 @@ function renderBusinessSheet() {
             : `Улучшить за ${formatNumber(nextCost)} RCT`;
 
   els.businessSheet.classList.remove("hidden");
-  document.body.classList.toggle("business-modal-open", true);
   els.businessSheetLogo.innerHTML = businessHeroLogoSvg(business.logoSeed, business.categoryId);
   els.businessSheetName.textContent = business.name;
   els.businessSheetDesc.textContent = level <= 0
@@ -2149,7 +2200,7 @@ function renderBusinessSheet() {
 function closeBusinessSheet() {
   selectedBusinessId = "";
   if (els.businessSheet) els.businessSheet.classList.add("hidden");
-  document.body.classList.toggle("business-modal-open", false);
+  unlockBusinessModalScroll();
   lastBusinessListSignature = "";
   renderBusinesses();
 }
@@ -2157,18 +2208,11 @@ function closeBusinessSheet() {
 function bindBusinessSheet() {
   els.businessSheetClose?.addEventListener("click", closeBusinessSheet);
 
-  els.businessSheet?.addEventListener("click", (event) => {
-    if (event.target === els.businessSheet) {
-      closeBusinessSheet();
-    }
-  });
+  // Пока окно покупки открыто, фон и список бизнесов не прокручиваются.
+  document.addEventListener("touchmove", preventBusinessModalScroll, { passive: false });
+  document.addEventListener("wheel", preventBusinessModalScroll, { passive: false });
 
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !els.businessSheet?.classList.contains("hidden")) {
-      closeBusinessSheet();
-    }
-  });
-
+  // Закрытие только по крестику, чтобы игрок случайно не закрыл покупку.
   els.businessSheetBuyBtn?.addEventListener("click", () => {
     const businessId = els.businessSheetBuyBtn?.dataset.business || selectedBusinessId;
     if (businessId) buyBusinessLevel(businessId);
@@ -2232,11 +2276,11 @@ function renderBusinesses() {
       </div>
     `;
 
-    card.addEventListener("click", () => selectBusiness(business.id));
+    card.addEventListener("click", (event) => selectBusiness(business.id, event));
     card.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        selectBusiness(business.id);
+        selectBusiness(business.id, event);
       }
     });
 

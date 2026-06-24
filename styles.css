@@ -2734,3 +2734,84 @@ h2 {
 .low-perf .business-sheet {
   backdrop-filter: none !important;
 }
+
+
+/* v32 click-relative business modal + locked background */
+html.business-modal-open,
+body.business-modal-open {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  touch-action: none !important;
+}
+
+body.business-modal-open {
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
+}
+
+.business-sheet {
+  --modal-x: 50vw;
+  --modal-y: 50vh;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+  touch-action: none;
+}
+
+.business-sheet-panel {
+  position: absolute;
+  left: var(--modal-x);
+  top: var(--modal-y);
+  transform: translate(-50%, -50%);
+  width: min(calc(100vw - 24px), 408px);
+  max-height: min(68vh, 540px);
+  overflow: hidden;
+  animation: businessPanelPopAtPoint .16s ease-out;
+}
+
+@keyframes businessPanelPopAtPoint {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -44%) scale(.965);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.business-sheet-panel,
+.business-sheet-panel * {
+  touch-action: manipulation;
+}
+
+.business-sheet-body {
+  min-width: 0;
+}
+
+.business-sheet-body h3,
+.business-sheet-body p {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 430px) {
+  .business-sheet-panel {
+    width: min(calc(100vw - 20px), 390px);
+    max-height: min(70vh, 530px);
+  }
+}
+
+@media (max-width: 360px) {
+  .business-sheet-panel {
+    width: min(calc(100vw - 18px), 340px);
+    max-height: min(72vh, 520px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .business-sheet-panel {
+    animation: none;
+  }
+}
