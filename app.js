@@ -1,5 +1,5 @@
 const CONFIG = {
-  appVersion: "v29-leaderboard-avatars",
+  appVersion: "v30-business-ui-rework",
   saveKey: "raccoon_tap_save_v1",
   baseTap: 1,
   baseMaxEnergy: 1000,
@@ -207,6 +207,7 @@ const defaultState = {
 
 let state = loadState();
 let activeCategoryId = "markets";
+let selectedBusinessId = "";
 let toastTimer = null;
 let lastRenderSecond = 0;
 let backendActionBusy = false;
@@ -270,6 +271,16 @@ const els = {
   floatingLayer: $("#floatingLayer"),
   categoryTabs: $("#categoryTabs"),
   businessList: $("#businessList"),
+  businessSheet: $("#businessSheet"),
+  businessSheetClose: $("#businessSheetClose"),
+  businessSheetLogo: $("#businessSheetLogo"),
+  businessSheetName: $("#businessSheetName"),
+  businessSheetDesc: $("#businessSheetDesc"),
+  businessSheetLevel: $("#businessSheetLevel"),
+  businessSheetProfit: $("#businessSheetProfit"),
+  businessSheetGain: $("#businessSheetGain"),
+  businessSheetPayback: $("#businessSheetPayback"),
+  businessSheetBuyBtn: $("#businessSheetBuyBtn"),
   categoryNameValue: $("#categoryNameValue"),
   categoryProfitValue: $("#categoryProfitValue"),
   ownedBusinessesValue: $("#ownedBusinessesValue"),
@@ -373,6 +384,7 @@ function init() {
   bindTap();
   bindResetConfirmModal();
   bindReset();
+  bindBusinessSheet();
   bindSupportProjectActions();
   bindEnergyCapacityUpgrade();
   bindReferralActions();
@@ -558,6 +570,7 @@ function bindNavigation() {
       document.querySelectorAll(".screen").forEach((section) => section.classList.remove("active"));
       button.classList.add("active");
       $(`#screen-${screen}`).classList.add("active");
+      if (screen !== "businesses") selectedBusinessId = "";
       lastBusinessListSignature = "";
       lastBoostListSignature = "";
       renderAll();
@@ -1049,6 +1062,7 @@ function renderAll() {
 
   if ($("#screen-businesses").classList.contains("active")) {
     renderBusinesses();
+    renderBusinessSheet();
   }
 
   if ($("#screen-boosts").classList.contains("active")) {
@@ -1948,8 +1962,11 @@ function renderCategoryTabs() {
     button.textContent = category.name;
     button.addEventListener("click", () => {
       activeCategoryId = category.id;
+      selectedBusinessId = "";
+      lastBusinessListSignature = "";
       renderCategoryTabs();
       renderBusinesses();
+      renderBusinessSheet();
     });
     els.categoryTabs.appendChild(button);
   });
@@ -2029,7 +2046,9 @@ async function buyEnergyCapacityUpgrade() {
     setBackendError(error);
   } finally {
     backendActionBusy = false;
+    lastBusinessListSignature = "";
     renderAll();
+    renderBusinessSheet();
   }
 }
 
@@ -2061,6 +2080,83 @@ function getEnergyCapacityCooldownSeconds(nextLevel) {
   return Math.ceil(Math.min(CONFIG.energyCapacityCooldownMaxSeconds, seconds));
 }
 
+
+function getSelectedBusiness() {
+  return findBusiness(selectedBusinessId);
+}
+
+function selectBusiness(businessId) {
+  const business = findBusiness(businessId);
+  if (!business) return;
+
+  selectedBusinessId = business.id;
+  lastBusinessListSignature = "";
+  renderBusinesses();
+  renderBusinessSheet();
+  hapticTap("light");
+}
+
+function renderBusinessSheet() {
+  if (!els.businessSheet) return;
+
+  const business = getSelectedBusiness();
+  if (!business) {
+    els.businessSheet.classList.add("hidden");
+    return;
+  }
+
+  const level = getBusinessLevel(business.id);
+  const nextCost = getBusinessNextCost(business);
+  const currentProfit = getBusinessProfitPerHour(business, level);
+  const nextProfit = getBusinessProfitPerHour(business, level + 1);
+  const profitGain = Math.max(0, nextProfit - currentProfit);
+  const paybackHours = profitGain > 0 ? nextCost / profitGain : Infinity;
+  const cooldownLeft = getBusinessCooldownLeft(business.id);
+  const telegramReady = isTelegramMiniAppReady();
+  const maxed = level >= CONFIG.businessMaxLevel;
+  const canBuy = telegramReady && !backendActionBusy && state.coins >= nextCost && !maxed && cooldownLeft <= 0;
+
+  const actionText = maxed
+    ? "Максимальный уровень"
+    : !telegramReady
+      ? "Открой через Telegram"
+      : backendActionBusy
+        ? "Синхронизация..."
+        : cooldownLeft > 0
+          ? `КД ${formatLongTime(cooldownLeft)}`
+          : level <= 0
+            ? `Купить за ${formatNumber(nextCost)} RCT`
+            : `Улучшить за ${formatNumber(nextCost)} RCT`;
+
+  els.businessSheet.classList.remove("hidden");
+  els.businessSheetLogo.innerHTML = businessHeroLogoSvg(business.logoSeed, business.categoryId);
+  els.businessSheetName.textContent = business.name;
+  els.businessSheetDesc.textContent = level <= 0
+    ? `Новый бизнес. После покупки начнёт приносить ${formatNumber(nextProfit)}/час.`
+    : `${business.description} Следующий уровень даст +${formatNumber(profitGain)}/час.`;
+  els.businessSheetLevel.textContent = `${level}/${CONFIG.businessMaxLevel}`;
+  els.businessSheetProfit.textContent = `${formatNumber(currentProfit)}/час`;
+  els.businessSheetGain.textContent = maxed ? "MAX" : `+${formatNumber(profitGain)}/час`;
+  els.businessSheetPayback.textContent = maxed ? "MAX" : formatPayback(paybackHours);
+  els.businessSheetBuyBtn.disabled = !canBuy;
+  els.businessSheetBuyBtn.textContent = actionText;
+  els.businessSheetBuyBtn.dataset.business = business.id;
+}
+
+function bindBusinessSheet() {
+  els.businessSheetClose?.addEventListener("click", () => {
+    selectedBusinessId = "";
+    renderBusinessSheet();
+    lastBusinessListSignature = "";
+    renderBusinesses();
+  });
+
+  els.businessSheetBuyBtn?.addEventListener("click", () => {
+    const businessId = els.businessSheetBuyBtn?.dataset.business || selectedBusinessId;
+    if (businessId) buyBusinessLevel(businessId);
+  });
+}
+
 function renderBusinesses() {
   const category = categories.find((item) => item.id === activeCategoryId) || categories[0];
   els.categoryNameValue.textContent = category.name;
@@ -2068,6 +2164,7 @@ function renderBusinesses() {
 
   const businessSignature = JSON.stringify([
     activeCategoryId,
+    selectedBusinessId,
     backendActionBusy,
     isTelegramMiniAppReady(),
     category.businesses.map((business) => {
@@ -2088,73 +2185,47 @@ function renderBusinesses() {
     const currentProfit = getBusinessProfitPerHour(business, level);
     const nextProfit = getBusinessProfitPerHour(business, level + 1);
     const profitGain = Math.max(0, nextProfit - currentProfit);
-    const paybackHours = profitGain > 0 ? nextCost / profitGain : Infinity;
     const cooldownLeft = getBusinessCooldownLeft(business.id);
-    const telegramReady = isTelegramMiniAppReady();
-    const canBuy = telegramReady && !backendActionBusy && state.coins >= nextCost && level < CONFIG.businessMaxLevel && cooldownLeft <= 0;
-    const buttonText = level >= CONFIG.businessMaxLevel
-      ? "MAX"
-      : !telegramReady
-        ? "Открой в TG"
-        : backendActionBusy
-          ? "Синхронизация..."
-          : cooldownLeft > 0
-            ? `КД ${formatLongTime(cooldownLeft)}`
-            : formatNumber(nextCost);
+    const maxed = level >= CONFIG.businessMaxLevel;
+    const selected = selectedBusinessId === business.id;
+    const canAfford = state.coins >= nextCost;
 
     const card = document.createElement("article");
-    card.className = "business-card";
+    card.className = `business-card business-card-compact${selected ? " selected" : ""}${level > 0 ? " owned" : ""}`;
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `${business.name}. Уровень ${level}. Нажми, чтобы открыть покупку или улучшение.`);
     card.innerHTML = `
-      <div class="biz-logo">${businessLogoSvg(business.logoSeed, business.categoryId)}</div>
-      <div class="business-main">
-        <div class="business-top">
-          <div>
-            <div class="business-name">${business.name}</div>
-            <div class="business-tier">${getBusinessTier(level)}</div>
-          </div>
-          <div class="business-level">ур. ${level}/${CONFIG.businessMaxLevel}</div>
+      <div class="biz-logo compact-logo">${businessLogoSvg(business.logoSeed, business.categoryId)}</div>
+      <div class="business-main compact-main">
+        <div class="business-name">${business.name}</div>
+        <div class="compact-business-line">
+          <span>ур. ${level}</span>
+          <b>${formatNumber(currentProfit)}/час</b>
         </div>
-        <div class="business-desc">${business.description}</div>
-        <div class="business-numbers">
-          <div>
-            <span>Сейчас</span>
-            <b>${formatNumber(currentProfit)}/час</b>
-          </div>
-          <div>
-            <span>После апгрейда</span>
-            <b>${level >= CONFIG.businessMaxLevel ? "MAX" : `${formatNumber(nextProfit)}/час`}</b>
-          </div>
-          <div>
-            <span>Цена улучшения</span>
-            <b>${level >= CONFIG.businessMaxLevel ? "MAX" : formatNumber(nextCost)}</b>
-          </div>
-          <div>
-            <span>Окупаемость</span>
-            <b>${level >= CONFIG.businessMaxLevel ? "MAX" : formatPayback(paybackHours)}</b>
-          </div>
-          <div>
-            <span>КД улучшения</span>
-            <b>${cooldownLeft > 0 ? formatLongTime(cooldownLeft) : "готово"}</b>
-          </div>
-          <div>
-            <span>Рост дохода</span>
-            <b>${level >= CONFIG.businessMaxLevel ? "MAX" : `+${formatNumber(profitGain)}/час`}</b>
-          </div>
+        <div class="compact-business-line muted-line">
+          <span>${maxed ? "MAX" : level <= 0 ? "Купить" : "Апгрейд"}</span>
+          <b>${maxed ? "MAX" : formatNumber(nextCost)}</b>
         </div>
-        <div class="card-actions">
-          <div class="mini-progress" title="Прогресс уровня">
-            <div style="width:${(level / CONFIG.businessMaxLevel) * 100}%"></div>
-          </div>
-          <button class="buy-btn" data-business="${business.id}" ${canBuy ? "" : "disabled"}>
-            ${buttonText}
-          </button>
+        <div class="compact-business-bottom">
+          <span class="compact-gain">${maxed ? "MAX" : `+${formatNumber(profitGain)}/ч`}</span>
+          <span class="compact-status ${cooldownLeft > 0 ? "cooldown" : canAfford ? "ready" : "locked"}">${cooldownLeft > 0 ? formatLongTime(cooldownLeft) : canAfford ? "Готово" : "Не хватает"}</span>
         </div>
       </div>
     `;
 
-    card.querySelector(".buy-btn").addEventListener("click", () => buyBusinessLevel(business.id));
+    card.addEventListener("click", () => selectBusiness(business.id));
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectBusiness(business.id);
+      }
+    });
+
     els.businessList.appendChild(card);
   });
+
+  renderBusinessSheet();
 }
 
 async function buyBusinessLevel(businessId) {
@@ -2192,7 +2263,9 @@ async function buyBusinessLevel(businessId) {
   }
 
   backendActionBusy = true;
+  lastBusinessListSignature = "";
   renderBusinesses();
+  renderBusinessSheet();
 
   try {
     const data = await callGameBackend({
@@ -2754,8 +2827,52 @@ function businessLogoSvg(seed, categoryId = "") {
   const packs = { markets, pr, legal, special };
   const pack = packs[type] || markets;
   const icon = pack[variant] || pack[0];
+  const raccoonBadge = `<g transform="translate(7 37)">
+    <circle cx="11" cy="11" r="10" fill="#f1d6ad" stroke="#271a06" stroke-width="2"/>
+    <path d="M2 10c3-5 15-5 18 0-1 6-17 6-18 0z" fill="#2b313a" opacity=".86"/>
+    <circle cx="8" cy="10" r="1.6" fill="#fff"/>
+    <circle cx="14" cy="10" r="1.6" fill="#fff"/>
+    <path d="M10 14h2l-1 2z" fill="#271a06"/>
+  </g>`;
 
-  return `<svg viewBox="0 0 64 64" aria-hidden="true">${common}${icon}</svg>`;
+  return `<svg viewBox="0 0 64 64" aria-hidden="true">${common}${icon}${raccoonBadge}</svg>`;
+}
+
+
+function businessHeroLogoSvg(seed, categoryId = "") {
+  const type = categoryId || (seed < 20 ? "markets" : seed < 40 ? "pr" : seed < 60 ? "legal" : "special");
+  const hue = {
+    markets: ["#ffd886", "#f0a735", "#7be0ff"],
+    pr: ["#b8f5ff", "#4bb7ff", "#ffd886"],
+    legal: ["#d6c0ff", "#7c5cff", "#ffd886"],
+    special: ["#ffb6d0", "#d44aff", "#80f2a6"]
+  }[type] || ["#ffd886", "#f0a735", "#7be0ff"];
+  const gid = `heroBiz${type}${seed}`;
+  const symbol = {
+    markets: `<path d="M24 58h48V36H24z" fill="url(#heroAccent${gid})"/><path d="M20 34h56l-7-13H27z" fill="url(#heroGold${gid})"/><path d="M32 45h11v13H32z" fill="#121824"/><circle cx="61" cy="49" r="8" fill="url(#heroGold${gid})"/>`,
+    pr: `<circle cx="50" cy="44" r="18" fill="url(#heroAccent${gid})"/><path d="M33 44l-10 9V35z" fill="url(#heroGold${gid})"/><path d="M61 31l10-9M67 43h13M61 57l10 9" stroke="url(#heroGold${gid})" stroke-width="5" stroke-linecap="round"/>`,
+    legal: `<path d="M31 59h42" stroke="url(#heroGold${gid})" stroke-width="6" stroke-linecap="round"/><path d="M52 23v36" stroke="url(#heroAccent${gid})" stroke-width="7" stroke-linecap="round"/><path d="M35 31h34" stroke="url(#heroGold${gid})" stroke-width="5" stroke-linecap="round"/><path d="M36 34l-10 19h20zM68 34 58 53h20z" fill="url(#heroAccent${gid})" opacity=".92"/>`,
+    special: `<path d="M51 20l8 17 19 3-14 13 4 19-17-9-17 9 4-19-14-13 19-3z" fill="url(#heroAccent${gid})"/><circle cx="51" cy="46" r="14" fill="#111827" stroke="url(#heroGold${gid})" stroke-width="4"/><path d="M44 46h14M51 39v14" stroke="${hue[2]}" stroke-width="4" stroke-linecap="round"/>`
+  }[type];
+
+  return `<svg viewBox="0 0 96 96" aria-hidden="true">
+    <defs>
+      <linearGradient id="heroGold${gid}" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="${hue[0]}"/><stop offset="1" stop-color="${hue[1]}"/></linearGradient>
+      <linearGradient id="heroAccent${gid}" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="${hue[2]}"/><stop offset="1" stop-color="${hue[1]}"/></linearGradient>
+    </defs>
+    <rect x="6" y="6" width="84" height="84" rx="28" fill="#111827" stroke="url(#heroGold${gid})" stroke-width="3"/>
+    <circle cx="78" cy="20" r="9" fill="url(#heroGold${gid})" opacity=".95"/>
+    ${symbol}
+    <g transform="translate(13 17)">
+      <path d="M10 20c0-12 9-21 22-21s22 9 22 21v12c0 12-10 20-22 20S10 44 10 32V20z" fill="#f1d6ad" stroke="#2a1a08" stroke-width="3"/>
+      <path d="M11 10 3 0l17 4M53 10l8-10-17 4" fill="#2a1a08"/>
+      <path d="M12 22c6-9 34-9 40 0-3 12-37 12-40 0z" fill="#2b313a" opacity=".9"/>
+      <circle cx="24" cy="22" r="3" fill="#fff"/><circle cx="40" cy="22" r="3" fill="#fff"/>
+      <circle cx="24" cy="22" r="1.4" fill="#111827"/><circle cx="40" cy="22" r="1.4" fill="#111827"/>
+      <path d="M29 31h6l-3 4z" fill="#2a1a08"/>
+      <path d="M25 39c5 4 10 4 15 0" stroke="#2a1a08" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    </g>
+  </svg>`;
 }
 
 function boostLogoSvg(index) {
